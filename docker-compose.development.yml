@@ -1,0 +1,20 @@
+services:
+  fastapi:
+    container_name: fastapi
+    build: ./fastapi/
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./fastapi/main.py:/app/main.py
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend/
+      target: base
+    command: bun vite --host 0.0.0.0 --port 5173
+    ports:
+      - "80:5173"
+    volumes:
+      - ./frontend/:/app/
+      - /app/node_modules
