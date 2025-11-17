@@ -1,15 +1,26 @@
 // CodeNode.tsx
 import { useRef, useEffect, useState } from 'react';
-import { Handle, Position } from '@xyflow/react';
+//import { Handle, Position } from '@xyflow/react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { nightOwl as theme } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneDark as mainTheme, oneLight as highlightTheme } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CodeNodeProps {
   id: string;
   data: {
     label: string;
+    highlighted?: boolean; // add this
   };
 }
+
+/*const availableStyles = [
+  coy, dark, funky, okaidia, solarizedlight,
+  tomorrow, twilight, prism, a11yDark, atomDark, base16AteliersulphurpoolLight,
+  cb, coldarkCold, coldarkDark, coyWithoutShadows, darcula, dracula, duotoneDark,
+  duotoneEarth, duotoneForest, duotoneLight, duotoneSea, duotoneSpace, ghcolors,
+  gruvboxDark, gruvboxLight, holiTheme, hopscotch, lucario, materialDark,
+  materialLight, materialOceanic, nightOwl, nord, oneDark, oneLight, pojoaque,
+  shadesOfPurple, solarizedDarkAtom, synthwave84, vs, vscDarkPlus, xonokai, zTouch
+];*/
 
 export default function CodeNode({ id, data }: CodeNodeProps) {
   const idRef = useRef<HTMLDivElement>(null);
@@ -21,9 +32,10 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
     }
   }, [id]);
 
+  const idColor = data.highlighted ? '#ffff00' : '#ffffff';
+
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      {/* Node ID (absolute to the left, dynamic spacing) */}
       <div
         ref={idRef}
         style={{
@@ -31,7 +43,7 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
           top: '50%',
           left: -(idWidth + 8),
           transform: 'translateY(-50%)',
-          color: '#FFA500', // pleasant orange
+          color: idColor,
           fontSize: 12,
           fontFamily: 'monospace',
           fontWeight: 500,
@@ -41,10 +53,9 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
         {id}
       </div>
 
-      {/* Node content */}
       <div
         style={{
-          background: '#1e1e1e',
+          background: data.highlighted ? '#FAFAFA' : '#292C33',
           borderRadius: 6,
           padding: 8,
           width: 'fit-content',
@@ -52,7 +63,7 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
       >
         <SyntaxHighlighter
           language="python"
-          style={theme}
+          style={data.highlighted ? highlightTheme : mainTheme}
           wrapLines={true}
           showLineNumbers={false}
           customStyle={{
@@ -66,9 +77,8 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
           {data.label}
         </SyntaxHighlighter>
 
-        {/* IO Ports */}
-        <Handle type="target" position={Position.Top} />
-        <Handle type="source" position={Position.Bottom} />
+        {/*<Handle type="target" position={Position.Top} />
+        <Handle type="source" position={Position.Bottom} />*/}
       </div>
     </div>
   );
