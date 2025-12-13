@@ -2,6 +2,7 @@
 import { useReactFlow, Panel } from '@xyflow/react'
 import { useState, useRef } from 'react'
 import { PanelButton } from './ui/PanelButton'
+import { server_uri } from './config'
 
 export function ImportPanel({ setFileImported, setNodes }: { setFileImported: (v: boolean) => void, setNodes: any }) {
   const [loading, setLoading] = useState(false)
@@ -13,7 +14,7 @@ export function ImportPanel({ setFileImported, setNodes }: { setFileImported: (v
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch('http://127.0.0.1:8000/api/import', {
+      const response = await fetch(`http${server_uri}/api/import`, {
         method: 'POST',
         body: formData,
       })

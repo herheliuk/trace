@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Panel } from '@xyflow/react';
 import { PanelButton } from './ui/PanelButton';
+import { server_uri } from './config';
 
 interface WebSocketPanelProps {
   send?: (data: any) => void;
@@ -37,7 +38,7 @@ export function WebSocketPanel({ send, reachedEnd, show, waiting, setWaiting, wi
       }
 
       try {
-        await fetch('http://127.0.0.1:8000/app_start', { method: 'POST' });
+        await fetch(`http${server_uri}/api/app_start`, { method: 'POST' });
       } catch (err) {
         console.error('Failed to POST /app_start', err);
       }

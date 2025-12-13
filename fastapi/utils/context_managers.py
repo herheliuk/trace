@@ -27,66 +27,41 @@ def use_trace(trace_function):
         yield
     finally:
         settrace(old_trace)
-        
-import sys
-from websocket import WebSocket
+
 from time import sleep
 
-class WSWriter:
-    def __init__(self, ws):
-        self.ws = ws
+from utils.internal_file_communication import ifc_read, ifc_write
 
-    def write(self, message):
-        # WebSocket may expect text only, filter empty flush calls
-        if message and message.strip() != "":
-            try:
-                self.ws.send(message)
-            except Exception as e:
-                # Optional: print errors to original stderr
-                sys.__stderr__.write(f"[WS send error] {e}\n")
-
-    def flush(self):
-        pass  # required for Python's IO interface
-
-
-# ---- Connect loop ----
-ws = WebSocket()
-print('connecting to ws://')
-
-connected = False
-while not connected:
-    try:
-        ws.connect("ws://127.0.0.1:8000/app_ws")
-        connected = True
-    except:
-        print('failed to connect, retrying in 1s...')
-        sleep(1)
-
-ws_writer = WSWriter(ws)
-sys.stdout = ws_writer
-sys.stderr = ws_writer
-
-print('connected to ws://')
-
+for name in (
+    '_app_to_server',
+    '_server_to_app',
+    '_watcher',
+):
+    file_txt = Path.cwd() / f'{name}.txt'
+    globals()[name] = str(file_txt)
 
 @contextmanager
-def step_io(write_mem, criu, output_file: Path, interactive = None):
+def step_io(criu, output_file: Path, interactive = None):
     def print_step(text):
-        ws.send(text)
+        ifc_write(_app_to_server, text)
             
     def input_step(text):
         criu.dump(allow_overwrite=True)
-        ws.send(text)
-        while True:
-            match ws.recv():
-                case 'continue':
-                    break
-                case resp:
-                    try:
-                        int(resp)
-                        write_mem(resp)
-                        _exit(0)
-                    except Exception as error:
-                        ws.send(error)
+        ifc_write(_app_to_server, text)
+        running = True
+        while running:
+            for resp in ifc_read(_server_to_app):
+                match resp:
+                    case 'continue':
+                        running = False
+                    case resp:
+                        try:
+                            int(resp)
+                            ifc_write(_watcher, resp)
+                            _exit(0)
+                        except Exception as error:
+                            print(error)
+            
+            sleep(.1)
 
     yield (print_step, input_step)

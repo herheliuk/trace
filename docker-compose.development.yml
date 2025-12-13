@@ -2,7 +2,7 @@ services:
   fastapi:
     container_name: fastapi
     build: ./fastapi/
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     volumes:
@@ -14,7 +14,7 @@ services:
       target: base
     command: bun vite --host 0.0.0.0 --port 5173
     ports:
-      - "80:5173"
+      - "127.0.0.1:8080:5173"
     volumes:
       - ./frontend/:/app/
       - /app/node_modules

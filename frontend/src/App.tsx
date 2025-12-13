@@ -11,13 +11,16 @@ import CodeNode from './CodeNode';
 import { useWebSocket } from "./useWebSocket";
 import { WebSocketPanel } from "./WebSocketPanel";
 import { FlowHighlighter } from './FlowHighlighter';
+import { server_uri } from './config';
 
 export default function App() {
-  const { message, send } = useWebSocket("ws://127.0.0.1:8000/ws");
+  const { message, send } = useWebSocket(`ws${server_uri}/api/ws`);
 
   const [nodes, setNodes] = useState<any[]>([]);
   const [fileImported, setFileImported] = useState(false);
   const [reachedEnd, setReachedEnd] = useState(false);
+
+  const [timelineClicked, setTimelineClicked] = useState<boolean | null>(null);
 
   const [timelineMessages, setTimelineMessages] = useState<any[]>([]);
   const [currentMessageIndex, setCurrentMessageIndex] = useState<number | null>(null);
@@ -28,6 +31,23 @@ export default function App() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
+
+  function parseLogMessage(message: string) {
+    // Match JSON objects (including multiline)
+
+    const jsonMatches = message.match(/\{[\s\S]*?\}/g);
+
+    if (!jsonMatches) return [];
+
+    return jsonMatches.map(block => {
+      try {
+        return JSON.parse(block);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+  }
+
 
   const wipeTimeline = useCallback(() => {
     setTimelineMessages([]);
@@ -53,7 +73,7 @@ export default function App() {
     setReachedEnd(false);
 
     try {
-      const evt = JSON.parse(message);
+      const evt = parseLogMessage(message)[0];
       const id = evt.lineno.toString();
 
       setHighlightedId(id);
@@ -67,12 +87,15 @@ export default function App() {
   })
 );
 
-      setTimelineMessages(prev => {
-        const next = [...prev, evt];
-        if (next.length > 500) next.shift(); // PREVENT FPS drop
-        setCurrentMessageIndex(next.length - 1);
-        return next;
-      });
+      !timelineClicked ? 
+        setTimelineMessages(prev => {
+          const next = [...prev, evt];
+          if (next.length > 500) next.shift(); // PREVENT FPS drop
+          setCurrentMessageIndex(next.length - 1);
+          return next;
+      }) : setTimelineClicked(null);
+
+
     } catch {}
   }, [message]);
 
@@ -84,9 +107,9 @@ export default function App() {
   const handleTimelineClick = (index: number) => {
     send(index);
     setCurrentMessageIndex(index);
-    const evt = timelineMessages[index];
-    if (evt) setHighlightedId(evt.lineno.toString());
+    setTimelineClicked(true);
   };
+
 
   return (
     <div className="w-screen h-screen relative overflow-hidden flex flex-col">

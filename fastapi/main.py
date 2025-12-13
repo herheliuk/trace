@@ -1,7 +1,21 @@
+
+import asyncio
 import subprocess
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
+from pathlib import Path
+
+from utils.internal_file_communication import ifc_read, ifc_write
+
+for name in (
+    '_app_to_server',
+    '_server_to_app',
+    '_watcher',
+):
+    file_txt = Path.cwd() / f'{name}.txt'
+    globals()[name] = str(file_txt)
+    open(str(file_txt), "w").close()
 
 app = FastAPI(
     openapi_url=None
@@ -10,12 +24,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/app_start")
+@app.post("/api/app_start")
 async def app_start():
     subprocess.Popen(
         ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
@@ -24,9 +37,7 @@ async def app_start():
 
 @app.post("/api/import")
 async def import_graph(file: UploadFile = File(...)):
-    global app_ws
-    await web_ws.send_text('x')
-    app_ws = None
+    ifc_write(_watcher, 'x')
     # BAD CODE ^
     
     raw_bytes = await file.read()
@@ -47,49 +58,22 @@ async def import_graph(file: UploadFile = File(...)):
                 "data": {"label": line.lstrip()},
             }
             for idx, (i, line) in enumerate(lines_with_numbers)
-        ],
-        #"edges": [
-        #    {
-        #        "id": f"{lines_with_numbers[i][0]}-{lines_with_numbers[i+1][0]}",
-        #        "source": str(lines_with_numbers[i][0]),
-        #        "target": str(lines_with_numbers[i+1][0]),
-        #    }
-        #    for i in range(len(lines_with_numbers) - 1)
-        #],
+        ]
     }
 
-web_ws = None
-app_ws = None
-
-@app.websocket("/ws")
+@app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global web_ws, app_ws
-    web_ws = websocket
     await websocket.accept()
-    try:
+    async def adviasd():
         while True:
             data = await websocket.receive_text()
-            if app_ws:
-                await app_ws.send_text(data)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        web_ws = None
-
-@app.websocket("/app_ws")
-async def app_websocket_endpoint(websocket: WebSocket):
-    global web_ws, app_ws
-    app_ws = websocket
-    await websocket.accept()
-    try:
+            ifc_write(_server_to_app, data)
+    async def dfg913fg1():
         while True:
-            data = await websocket.receive_text()
-            if web_ws:
-                await web_ws.send_text(data)
-            else:
-                print(f'missed message to web client: {data}')
-    except Exception as e:
-        print(f"App WebSocket error: {e}")
-    finally:
-        await web_ws.send_text('x')
-        app_ws = None
+            for info in ifc_read(_app_to_server):
+                await websocket.send_text(info)
+            await asyncio.sleep(.1)
+    await asyncio.gather(
+        adviasd(),
+        dfg913fg1()
+    )

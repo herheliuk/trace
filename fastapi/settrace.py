@@ -15,17 +15,13 @@ from pathlib import Path
 from collections import defaultdict
 from traceback import format_tb
 
-_mem_file = Path.cwd() / 'mem.txt'
+from utils.internal_file_communication import ifc_read, ifc_write
 
-def write_mem(info: str):
-    with open(_mem_file, 'w') as file:
-        file.write(info)
-        
-def pop_mem() -> str:
-    with open(_mem_file, 'r') as file:
-        info = file.read()
-    write_mem('')
-    return info
+for name in (
+    '_watcher',
+):
+    file_txt = Path.cwd() / f'{name}.txt'
+    globals()[name] = str(file_txt)
 
 def main(debug_script_path: Path, output_file: Path, interactive = None):
     paths_to_trace = find_python_imports(debug_script_path)
@@ -42,7 +38,7 @@ def main(debug_script_path: Path, output_file: Path, interactive = None):
         for path in paths_to_trace
     }
     
-    with step_io(write_mem, criu, output_file, interactive) as (print_step, input_step):
+    with step_io(criu, output_file, interactive) as (print_step, input_step):
         def trace_function(frame, event, arg):
             str_code_filepath = frame.f_code.co_filename
             if str_code_filepath not in str_paths_to_trace: return
@@ -142,7 +138,8 @@ if __name__ == '__main__':
         os_waitpid(child_pid, 0)
         while True:
 
-            info = pop_mem()
+            info = ifc_read(_watcher)
+            info = info[len(info) - 1] if info else None
 
             try:
                 int(info)
