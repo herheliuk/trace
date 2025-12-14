@@ -15,13 +15,14 @@ interface WebSocketPanelProps {
 export function WebSocketPanel({ send, reachedEnd, show, waiting, setWaiting, wipeTimeline }: WebSocketPanelProps) {
   if (!show) return null;
 
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(true); // fasle);
 
   const onClick = async () => {
     if (!send || waiting) return;
 
     // ⛔ Disable until a WS response arrives
     setWaiting(true);
+    setTimeout(() => setWaiting(false), 200); // safety timeout
 
     const doStart = !started || reachedEnd;
 

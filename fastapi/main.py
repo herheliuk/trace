@@ -8,6 +8,44 @@ from pathlib import Path
 
 from utils.internal_file_communication import ifc_read, ifc_write
 
+import sqlite3
+
+DATABASE = Path.cwd() / 'trace.db'
+
+with sqlite3.connect(DATABASE) as db_connection:
+    db_connection.executescript('''
+        CREATE TABLE IF NOT EXISTS timeline (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            
+            event TEXT,
+            target TEXT,
+            return_value TEXT,
+            filename TEXT,
+            frame_pointer TEXT,
+            function TEXT,
+            lineno TEXT,
+            segment TEXT,
+            global_changes TEXT,
+            local_changes TEXT
+
+--            code TEXT,
+--            action TEXT,
+--
+--            return_value TEXT,
+--            scope TEXT,
+--
+--            frame INTEGER
+--            -- time_taken REAL,
+
+            -- sha256 TEXT UNIQUE,
+            -- last_sha256 TEXT
+        );
+        CREATE TABLE IF NOT EXISTS state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            current_timeline_id INTEGER
+        );
+    ''')
+
 for name in (
     '_app_to_server',
     '_server_to_app',
@@ -28,12 +66,87 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/api/app_start")
+@app.get("/api/sync")
 async def app_start():
-    subprocess.Popen(
+    with sqlite3.connect(DATABASE) as db_connection:
+        cursor = db_connection.execute(
+            """
+            SELECT current_timeline_id FROM state WHERE id = 1
+            """
+        )
+        row = cursor.fetchone()
+        current_timeline_id = row[0] if row else None
+
+        timeline = []
+        if current_timeline_id is not None:
+            cursor = db_connection.execute(
+                """
+                SELECT id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes
+                FROM timeline
+                WHERE id <= ?
+                ORDER BY id ASC
+                """,
+                (current_timeline_id,)
+            )
+            timeline = [
+                {
+                    "id": row[0],
+                    "event": row[1],
+                    "target":   row[2],
+                    "return_value": row[3],
+                    "filename": row[4],
+                    "frame_pointer": row[5],
+                    "function": row[6],
+                    "lineno": row[7],
+                    "segment": row[8],
+                    "global_changes": row[9],
+                    "local_changes": row[10]
+                }
+                for row in cursor.fetchall()
+            ]
+    
+        return {
+            "nodes": nodes_from_file(),
+            "timeline": timeline,
+            "current_timeline_id": current_timeline_id
+        }
+
+watcher_process = None
+
+def new_watcher_process() -> int:
+    global watcher_process
+    
+    try:
+        watcher_process.terminate()
+    except:
+        pass
+        
+    watcher_process = subprocess.Popen(
         ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
     )
-    return {"status": "tracing started"}
+    
+    return watcher_process
+
+MAIN_FILE_PATH = Path.cwd() / "shared" / "main.py"
+
+def nodes_from_file(raw_bytes = None) -> str:
+    if raw_bytes:
+        text = raw_bytes.decode('utf-8')
+    else:
+        with open(str(MAIN_FILE_PATH), "r") as file:
+            text = file.read()
+
+    lines_with_numbers = [(i, line) for i, line in enumerate(text.splitlines(), start=1) if line.strip() and line.lstrip()[0] != '#']
+
+    return [
+        {
+            "id": str(i),
+            "type": "code",
+            "position": {"x": (len(line) - len(line.lstrip())) / 4 * 25, "y": idx * 40},
+            "data": {"label": line.lstrip()},
+        }
+        for idx, (i, line) in enumerate(lines_with_numbers)
+    ]
 
 @app.post("/api/import")
 async def import_graph(file: UploadFile = File(...)):
@@ -42,28 +155,25 @@ async def import_graph(file: UploadFile = File(...)):
     
     raw_bytes = await file.read()
     
-    with open("./shared/main.py", "wb") as file:
+    with open(str(MAIN_FILE_PATH), "wb") as file:
         file.write(raw_bytes)
     
-    text = raw_bytes.decode("utf-8")
+    return {"nodes": nodes_from_file(raw_bytes)}
 
-    lines_with_numbers = [(i, line) for i, line in enumerate(text.splitlines(), start=1) if line.strip() and line.lstrip()[0] != '#']
-
-    return {
-        "nodes": [
-            {
-                "id": str(i),
-                "type": "code",
-                "position": {"x": (len(line) - len(line.lstrip())) / 4 * 25, "y": idx * 40},
-                "data": {"label": line.lstrip()},
-            }
-            for idx, (i, line) in enumerate(lines_with_numbers)
-        ]
-    }
+queue = []
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    
+    while queue:
+        info = queue.pop(0)
+        try:
+            await websocket.send_text(info)
+        except:
+            queue.insert(0, info)
+            break
+    
     async def adviasd():
         while True:
             data = await websocket.receive_text()
@@ -71,7 +181,10 @@ async def websocket_endpoint(websocket: WebSocket):
     async def dfg913fg1():
         while True:
             for info in ifc_read(_app_to_server):
-                await websocket.send_text(info)
+                try:
+                    await websocket.send_text(info)
+                except:
+                    queue.append(info)
             await asyncio.sleep(.1)
     await asyncio.gather(
         adviasd(),

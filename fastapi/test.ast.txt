@@ -1,0 +1,85 @@
+Module(
+    body=[
+        Assign(
+            targets=[
+                Name(id='x', ctx=Store())],
+            value=Constant(value=5)),
+        Assign(
+            targets=[
+                Name(id='y', ctx=Store())],
+            value=Constant(value=10)),
+        FunctionDef(
+            name='adD',
+            args=arguments(
+                posonlyargs=[],
+                args=[
+                    arg(arg='a'),
+                    arg(arg='b')],
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[]),
+            body=[
+                Assign(
+                    targets=[
+                        Name(id='tqeww', ctx=Store())],
+                    value=Constant(value=1)),
+                Delete(
+                    targets=[
+                        Name(id='tqeww', ctx=Del())]),
+                Return(
+                    value=BinOp(
+                        left=Name(id='a', ctx=Load()),
+                        op=Add(),
+                        right=Name(id='b', ctx=Load())))],
+            decorator_list=[],
+            type_params=[]),
+        Assign(
+            targets=[
+                Name(id='z', ctx=Store())],
+            value=Call(
+                func=Name(id='adD', ctx=Load()),
+                args=[
+                    Name(id='x', ctx=Load()),
+                    Name(id='y', ctx=Load())],
+                keywords=[])),
+        Expr(
+            value=JoinedStr(
+                values=[
+                    Constant(value='z = '),
+                    FormattedValue(
+                        value=Name(id='z', ctx=Load()),
+                        conversion=-1)])),
+        For(
+            target=Name(id='i', ctx=Store()),
+            iter=List(
+                elts=[
+                    Constant(value=1),
+                    Constant(value=2)],
+                ctx=Load()),
+            body=[
+                AugAssign(
+                    target=Name(id='z', ctx=Store()),
+                    op=Add(),
+                    value=Name(id='i', ctx=Load()))],
+            orelse=[]),
+        Assign(
+            targets=[
+                Name(id='hey', ctx=Store())],
+            value=Dict(
+                keys=[
+                    Constant(value='1'),
+                    Constant(value=2)],
+                values=[
+                    Constant(value=1),
+                    JoinedStr(
+                        values=[
+                            FormattedValue(
+                                value=Constant(value=2),
+                                conversion=-1)])])),
+        Expr(
+            value=Call(
+                func=Name(id='print', ctx=Load()),
+                args=[
+                    Name(id='z', ctx=Load())],
+                keywords=[]))],
+    type_ignores=[])

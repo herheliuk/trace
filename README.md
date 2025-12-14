@@ -39,4 +39,11 @@ source env.sh
 sudo -E $(which uvicorn) main:app
 ```
 
+term 2
+```
+# pwd ./fastapi/
+source env.sh
+python settrace.py
+```
+
 <img src="scr1.png" alt="App screenshot"/>

@@ -17,7 +17,7 @@ export default function App() {
   const { message, send } = useWebSocket(`ws${server_uri}/api/ws`);
 
   const [nodes, setNodes] = useState<any[]>([]);
-  const [fileImported, setFileImported] = useState(false);
+  const [fileImported, setFileImported] = useState(true); //false
   const [reachedEnd, setReachedEnd] = useState(false);
 
   const [timelineClicked, setTimelineClicked] = useState<boolean | null>(null);
@@ -31,6 +31,11 @@ export default function App() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
+
+  useEffect(() => {
+  syncFromServer();
+}, []);
+
 
   function parseLogMessage(message: string) {
     // Match JSON objects (including multiline)
@@ -47,6 +52,29 @@ export default function App() {
       }
     }).filter(Boolean);
   }
+
+async function syncFromServer() {
+  const res = await fetch(`http${server_uri}/api/sync`);
+  const data = await res.json();
+
+  // nodes
+  setNodes(data.nodes);
+
+  // timeline
+  setTimelineMessages(data.timeline);
+
+  if (data.current_timeline_id != null) {
+    const idx = data.timeline.findIndex(
+      (t: any) => t.id === data.current_timeline_id
+    );
+
+    setCurrentMessageIndex(idx >= 0 ? idx : null);
+    setHighlightedId(data.current_timeline_id.toString());
+  } else {
+    setCurrentMessageIndex(null);
+    setHighlightedId(null);
+  }
+}
 
 
   const wipeTimeline = useCallback(() => {
@@ -88,12 +116,10 @@ export default function App() {
 );
 
       !timelineClicked ? 
-        setTimelineMessages(prev => {
-          const next = [...prev, evt];
-          if (next.length > 500) next.shift(); // PREVENT FPS drop
-          setCurrentMessageIndex(next.length - 1);
-          return next;
-      }) : setTimelineClicked(null);
+setTimelineMessages(prev => {
+  if (prev.some(m => m.id === evt.id)) return prev;
+  return [...prev, evt].slice(-500);
+}): setTimelineClicked(null);
 
 
     } catch {}
@@ -104,11 +130,14 @@ export default function App() {
     []
   );
 
-  const handleTimelineClick = (index: number) => {
-    send(index);
-    setCurrentMessageIndex(index);
-    setTimelineClicked(true);
-  };
+const handleTimelineClick = (index: number) => {
+  const msg = timelineMessages[index];
+  if (!msg) return;
+
+  send(msg.id);              // ✅ authoritative
+  setCurrentMessageIndex(index);
+  setTimelineClicked(true);
+};
 
 
   return (
