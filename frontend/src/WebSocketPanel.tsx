@@ -22,7 +22,7 @@ export function WebSocketPanel({ send, reachedEnd, show, waiting, setWaiting, wi
 
     // ⛔ Disable until a WS response arrives
     setWaiting(true);
-    setTimeout(() => setWaiting(false), 200); // safety timeout
+    setTimeout(() => setWaiting(false), 2000); // safety timeout
 
     const doStart = !started || reachedEnd;
 

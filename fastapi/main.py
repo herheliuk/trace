@@ -12,6 +12,8 @@ import sqlite3
 
 DATABASE = Path.cwd() / 'trace.db'
 
+DATABASE.unlink(missing_ok=True)
+
 with sqlite3.connect(DATABASE) as db_connection:
     db_connection.executescript('''
         CREATE TABLE IF NOT EXISTS timeline (
@@ -171,6 +173,7 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             await websocket.send_text(info)
         except:
+            print("[a1]", end="", flush=True)
             queue.insert(0, info)
             break
     
@@ -184,9 +187,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     await websocket.send_text(info)
                 except:
+                    print("[aa]", end="", flush=True)
                     queue.append(info)
+            await asyncio.sleep(.1)
+    async def t4812():
+        while True:
+            while queue:
+                info = queue.pop(0)
+                try:
+                    await websocket.send_text(info)
+                except:
+                    print("[b4]", end="", flush=True)
+                    queue.insert(0, info)
+                    break
             await asyncio.sleep(.1)
     await asyncio.gather(
         adviasd(),
-        dfg913fg1()
+        dfg913fg1(),
+        t4812()
     )

@@ -36,23 +36,6 @@ export default function App() {
   syncFromServer();
 }, []);
 
-
-  function parseLogMessage(message: string) {
-    // Match JSON objects (including multiline)
-
-    const jsonMatches = message.match(/\{[\s\S]*?\}/g);
-
-    if (!jsonMatches) return [];
-
-    return jsonMatches.map(block => {
-      try {
-        return JSON.parse(block);
-      } catch {
-        return null;
-      }
-    }).filter(Boolean);
-  }
-
 async function syncFromServer() {
   const res = await fetch(`http${server_uri}/api/sync`);
   const data = await res.json();
@@ -101,7 +84,7 @@ async function syncFromServer() {
     setReachedEnd(false);
 
     try {
-      const evt = parseLogMessage(message)[0];
+      const evt = JSON.parse(message);
       const id = evt.lineno.toString();
 
       setHighlightedId(id);
@@ -116,13 +99,17 @@ async function syncFromServer() {
 );
 
       !timelineClicked ? 
-setTimelineMessages(prev => {
-  if (prev.some(m => m.id === evt.id)) return prev;
-  return [...prev, evt].slice(-500);
-}): setTimelineClicked(null);
+        setTimelineMessages(prev => {
+          const next = [...prev, evt];
+          if (next.length > 500) next.shift(); // PREVENT FPS drop
+          setCurrentMessageIndex(next.length - 1);
+          return next;
+      }) : setTimelineClicked(null);
 
 
-    } catch {}
+    } catch (err) {
+      console.error('Failed to parse WS message', err);
+    }
   }, [message]);
 
   const onNodesChange = useCallback(

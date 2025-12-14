@@ -54,12 +54,18 @@ for name in (
     file_txt = Path.cwd() / f'{name}.txt'
     globals()[name] = str(file_txt)
 
+class StdoutRedirector:
+    def flush(self):
+        pass
+    
+    def write(self, text):
+        ifc_write(_app_to_server, text)
 
-
-sys.stdout = 
+sys.stdout = StdoutRedirector()
+sys.stderr = sys.stdout
 
 def print_step(text):
-    ifc_write(_app_to_server, text)
+    ifc_write(_app_to_server, json.dumps(text))
             
 def send_update(send_back, traceback, error):
     if traceback:
