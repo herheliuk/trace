@@ -26,25 +26,21 @@ DATABASE = Path.cwd() / 'trace.db'
 
 def db_save(send_back) -> int:
     with sqlite3.connect(DATABASE) as db:
-        cursor = db.execute(
+        db.execute(
             """
-            INSERT INTO timeline (event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes)
-            VALUES (:event, :target, :return_value, :filename, :frame_pointer, :function, :lineno, :segment, :global_changes, :local_changes)
+            INSERT OR REPLACE INTO timeline (id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes)
+            VALUES (:current_timeline_id, :event, :target, :return_value, :filename, :frame_pointer, :function, :lineno, :segment, :global_changes, :local_changes)
             """,
-            {**send_back}
+            send_back
         )
-        
-        lastrowid = cursor.lastrowid
     
         db.execute(
             """
             INSERT OR REPLACE INTO state (id, current_timeline_id)
             VALUES (1, :current_timeline_id)
             """,
-            {"current_timeline_id": lastrowid}
+            {"current_timeline_id": send_back['current_timeline_id']}
         )
-        
-        return lastrowid
 
 for name in (
     '_app_to_server',
@@ -78,9 +74,12 @@ def send_update(send_back, traceback, error):
                 send_back[key] = json.dumps(value)
             except:
                 send_back[key] = json.dumps(str(value))
-            
-        current_timeline_id = db_save(send_back)
-        ifc_write(_app_to_server, json.dumps({**send_back, "current_timeline_id": current_timeline_id}))
+        
+        send_back['current_timeline_id'] = criu._last_dump_number
+        
+        db_save(send_back)
+        
+        ifc_write(_app_to_server, json.dumps(send_back))
     running = True
     while running:
         for resp in ifc_read(_server_to_app):
