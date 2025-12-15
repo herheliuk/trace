@@ -48,7 +48,7 @@ async function syncFromServer() {
 
 if (data.current_timeline_id != null) {
   const idx = data.timeline.findIndex(
-    (t: any) => t.id === data.current_timeline_id
+    (t: any) => t.current_timeline_id === data.current_timeline_id
   );
 
   if (idx >= 0) {
@@ -137,10 +137,10 @@ if (data.current_timeline_id != null) {
   );
 
 const handleTimelineClick = (index: number) => {
-  const msg = timelineMessages[index - 1];
+  const msg = timelineMessages[index];
   if (!msg) return;
 
-  send(msg.id);              // ✅ authoritative
+  send(msg.current_timeline_id);              // ✅ authoritative
   setCurrentMessageIndex(index);
   setTimelineClicked(true);
 };
