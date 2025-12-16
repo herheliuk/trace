@@ -19,9 +19,8 @@ export default function App() {
   const normalizeEvent = (event?: string) =>
     event?.replace(/^"+|"+$/g, '') ?? '';
 
-
   const [nodes, setNodes] = useState<any[]>([]);
-  const [fileImported, setFileImported] = useState(true); //false
+  const [fileImported, setFileImported] = useState(true);
   const [reachedEnd, setReachedEnd] = useState(false);
 
   const [timelineClicked, setTimelineClicked] = useState<boolean | null>(null);
@@ -31,62 +30,81 @@ export default function App() {
 
   const [waitingForResponse, setWaitingForResponse] = useState(false);
 
-  // Store highlight ID WITHOUT remapping nodes (major performance fix)
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
 
   useEffect(() => {
-  syncFromServer();
-}, []);
+    syncFromServer();
+  }, []);
 
-async function syncFromServer() {
-  const res = await fetch(`http${server_uri}/api/sync`);
-  const data = await res.json();
+  async function syncFromServer() {
+    const res = await fetch(`http${server_uri}/api/sync`);
+    const data = await res.json();
 
-  // nodes
-  setNodes(data.nodes);
+    setNodes(data.nodes);
+    setTimelineMessages(data.timeline);
 
-  // timeline
-  setTimelineMessages(data.timeline);
+    if (data.current_timeline_id != null) {
+      const idx = data.timeline.findIndex(
+        (t: any) => t.current_timeline_id === data.current_timeline_id
+      );
 
-if (data.current_timeline_id != null) {
-  const idx = data.timeline.findIndex(
-    (t: any) => t.current_timeline_id === data.current_timeline_id
-  );
+      if (idx >= 0) {
+        const lineno = data.timeline[idx].lineno;
 
-  if (idx >= 0) {
-    const lineno = data.timeline[idx].lineno;
+        setCurrentMessageIndex(idx);
+        setHighlightedId(lineno.toString());
 
-    setCurrentMessageIndex(idx);
-    setHighlightedId(lineno.toString());
-
-    // keep node.data.highlighted in sync (same logic as WS)
-    setNodes(nds =>
-      nds.map(node => {
-        const next = node.id === lineno.toString();
-        if (node.data.highlighted === next) return node;
-        return { ...node, data: { ...node.data, highlighted: next } };
-      })
-    );
-  } else {
-    setCurrentMessageIndex(null);
-    setHighlightedId(null);
+        setNodes(nds =>
+          nds.map(node => {
+            const next = node.id === lineno.toString();
+            if (node.data.highlighted === next) return node;
+            return { ...node, data: { ...node.data, highlighted: next } };
+          })
+        );
+      } else {
+        setCurrentMessageIndex(null);
+        setHighlightedId(null);
+      }
+    } else {
+      setCurrentMessageIndex(null);
+      setHighlightedId(null);
+    }
   }
-} else {
-  setCurrentMessageIndex(null);
-  setHighlightedId(null);
-}
-
-  
-
-}
-
 
   const wipeTimeline = useCallback(() => {
     setTimelineMessages([]);
     setCurrentMessageIndex(null);
   }, []);
+
+  // 🔑 MAP lineno → frame_pointer
+  const frameByLine = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const msg of timelineMessages) {
+      if (msg.lineno && msg.frame_pointer) {
+        map.set(msg.lineno.toString(), msg.frame_pointer);
+      }
+    }
+    return map;
+  }, [timelineMessages]);
+
+  // 🔑 INJECT framePointer into nodes
+  useEffect(() => {
+    setNodes(nds =>
+      nds.map(node => {
+        const framePointer = frameByLine.get(node.id) ?? null;
+        if (node.data.framePointer === framePointer) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            framePointer,
+          },
+        };
+      })
+    );
+  }, [frameByLine]);
 
   // WebSocket Handler
   useEffect(() => {
@@ -113,43 +131,38 @@ if (data.current_timeline_id != null) {
       setHighlightedId(id);
 
       setNodes(nds =>
-  nds.map(node => {
-    const old = node.data.highlighted;
-    const next = node.id === id;
-    if (old === next) return node;
-    return { ...node, data: { ...node.data, highlighted: next } };
-  })
-);
+        nds.map(node => {
+          const old = node.data.highlighted;
+          const next = node.id === id;
+          if (old === next) return node;
+          return { ...node, data: { ...node.data, highlighted: next } };
+        })
+      );
 
-if (!timelineClicked) {
-  setTimelineMessages(prev => {
-    const id = evt.current_timeline_id;
+      if (!timelineClicked) {
+        setTimelineMessages(prev => {
+          const id = evt.current_timeline_id;
+          const idx = prev.findIndex(
+            m => m.current_timeline_id === id
+          );
 
-    // ищем по уникальному timeline_id
-    const idx = prev.findIndex(
-      m => m.current_timeline_id === id
-    );
+          let next: any[];
 
-    let next: any[];
+          if (idx >= 0) {
+            next = [...prev];
+            next[idx] = { ...prev[idx], ...evt };
+            setCurrentMessageIndex(idx);
+          } else {
+            next = [...prev, evt];
+            if (next.length > 500) next.shift();
+            setCurrentMessageIndex(next.length - 1);
+          }
 
-    if (idx >= 0) {
-      // 🔁 UPDATE существующего события
-      next = [...prev];
-      next[idx] = { ...prev[idx], ...evt };
-      setCurrentMessageIndex(idx);
-    } else {
-      // ➕ ADD нового события
-      next = [...prev, evt];
-      if (next.length > 500) next.shift();
-      setCurrentMessageIndex(next.length - 1);
-    }
-
-    return next;
-  });
-} else {
-  setTimelineClicked(null);
-}
-
+          return next;
+        });
+      } else {
+        setTimelineClicked(null);
+      }
 
     } catch (err) {
       console.error('Failed to parse WS message', err);
@@ -161,15 +174,14 @@ if (!timelineClicked) {
     []
   );
 
-const handleTimelineClick = (index: number) => {
-  const msg = timelineMessages[index];
-  if (!msg) return;
+  const handleTimelineClick = (index: number) => {
+    const msg = timelineMessages[index];
+    if (!msg) return;
 
-  send(msg.current_timeline_id);              // ✅ authoritative
-  setCurrentMessageIndex(index);
-  setTimelineClicked(true);
-};
-
+    send(msg.current_timeline_id);
+    setCurrentMessageIndex(index);
+    setTimelineClicked(true);
+  };
 
   return (
     <div className="w-screen h-screen relative overflow-hidden flex flex-col">
@@ -257,10 +269,8 @@ const handleTimelineClick = (index: number) => {
           panOnScrollSpeed={1}
           className="w-full h-full bg-transparent"
         >
-          {/* Keeps your highlight effect */}
           <FlowHighlighter highlightedId={highlightedId} />
 
-          {/* Your original UI panels */}
           <ImportPanel setNodes={setNodes} setFileImported={setFileImported} />
 
           <WebSocketPanel
@@ -276,7 +286,6 @@ const handleTimelineClick = (index: number) => {
         </ReactFlow>
       </div>
 
-      {/* ------------------- TIMELINE ------------------- */}
       <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
         {timelineMessages.map((msg, idx) => {
           const isSelected = currentMessageIndex === idx;
@@ -295,22 +304,16 @@ const handleTimelineClick = (index: number) => {
               title={`Timeline index: ${idx}, Line: ${msg.lineno}`}
             >
               <span className="text-xs text-white mt-1 font-bold">
-  {(() => {
-    const event = normalizeEvent(msg.event);
-
-    if (event === 'line') {
-      return msg.lineno;
-    }
-
-    return event.charAt(0).toUpperCase();
-  })()}
-</span>
-
+                {(() => {
+                  const event = normalizeEvent(msg.event);
+                  if (event === 'line') return msg.lineno;
+                  return event.charAt(0).toUpperCase();
+                })()}
+              </span>
             </div>
           );
         })}
       </div>
-
     </div>
   );
 }

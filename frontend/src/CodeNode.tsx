@@ -1,4 +1,3 @@
-// CodeNode.tsx
 import { useRef, useEffect, useState } from 'react';
 //import { Handle, Position } from '@xyflow/react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -8,51 +7,54 @@ interface CodeNodeProps {
   id: string;
   data: {
     label: string;
-    highlighted?: boolean; // add this
+    highlighted?: boolean;
+    framePointer?: string | null;
   };
 }
 
-/*const availableStyles = [
-  coy, dark, funky, okaidia, solarizedlight,
-  tomorrow, twilight, prism, a11yDark, atomDark, base16AteliersulphurpoolLight,
-  cb, coldarkCold, coldarkDark, coyWithoutShadows, darcula, dracula, duotoneDark,
-  duotoneEarth, duotoneForest, duotoneLight, duotoneSea, duotoneSpace, ghcolors,
-  gruvboxDark, gruvboxLight, holiTheme, hopscotch, lucario, materialDark,
-  materialLight, materialOceanic, nightOwl, nord, oneDark, oneLight, pojoaque,
-  shadesOfPurple, solarizedDarkAtom, synthwave84, vs, vscDarkPlus, xonokai, zTouch
-];*/
-
 export default function CodeNode({ id, data }: CodeNodeProps) {
-  const idRef = useRef<HTMLDivElement>(null);
-  const [idWidth, setIdWidth] = useState(0);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const [labelWidth, setLabelWidth] = useState(0);
 
   useEffect(() => {
-    if (idRef.current) {
-      setIdWidth(idRef.current.offsetWidth);
+    if (labelRef.current) {
+      setLabelWidth(labelRef.current.offsetWidth);
     }
-  }, [id]);
+  }, [id, data.framePointer]);
 
-  const idColor = data.highlighted ? '#ffff00' : '#ffffff';
+  const labelColor = data.highlighted ? '#ffff00' : '#ffffff';
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
+      {/* LABEL — PURE OVERLAY, ZERO LAYOUT IMPACT */}
       <div
-        ref={idRef}
+        ref={labelRef}
         style={{
           position: 'absolute',
           top: '50%',
-          left: -(idWidth + 8),
+          left: -(labelWidth + 8),
           transform: 'translateY(-50%)',
-          color: idColor,
+          color: labelColor,
           fontSize: 12,
           fontFamily: 'monospace',
           fontWeight: 500,
           whiteSpace: 'nowrap',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          pointerEvents: 'none',
+          userSelect: 'none',
         }}
       >
-        {id}
+        {data.framePointer && (
+          <span style={{ opacity: 0.8 }}>
+            {data.framePointer}
+          </span>
+        )}
+        <span>{id}</span>
       </div>
 
+      {/* NODE BODY — TRUE SIZE & POSITION */}
       <div
         style={{
           background: data.highlighted ? '#FAFAFA' : '#292C33',
