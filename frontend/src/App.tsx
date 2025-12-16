@@ -16,6 +16,10 @@ import { server_uri } from './config';
 export default function App() {
   const { message, send } = useWebSocket(`ws${server_uri}/api/ws`);
 
+  const normalizeEvent = (event?: string) =>
+    event?.replace(/^"+|"+$/g, '') ?? '';
+
+
   const [nodes, setNodes] = useState<any[]>([]);
   const [fileImported, setFileImported] = useState(true); //false
   const [reachedEnd, setReachedEnd] = useState(false);
@@ -117,13 +121,34 @@ if (data.current_timeline_id != null) {
   })
 );
 
-      !timelineClicked ? 
-        setTimelineMessages(prev => {
-          const next = [...prev, evt];
-          if (next.length > 500) next.shift(); // PREVENT FPS drop
-          setCurrentMessageIndex(next.length - 1);
-          return next;
-      }) : setTimelineClicked(null);
+if (!timelineClicked) {
+  setTimelineMessages(prev => {
+    const id = evt.current_timeline_id;
+
+    // ищем по уникальному timeline_id
+    const idx = prev.findIndex(
+      m => m.current_timeline_id === id
+    );
+
+    let next: any[];
+
+    if (idx >= 0) {
+      // 🔁 UPDATE существующего события
+      next = [...prev];
+      next[idx] = { ...prev[idx], ...evt };
+      setCurrentMessageIndex(idx);
+    } else {
+      // ➕ ADD нового события
+      next = [...prev, evt];
+      if (next.length > 500) next.shift();
+      setCurrentMessageIndex(next.length - 1);
+    }
+
+    return next;
+  });
+} else {
+  setTimelineClicked(null);
+}
 
 
     } catch (err) {
@@ -269,7 +294,18 @@ const handleTimelineClick = (index: number) => {
                 rounded-full border-2 h-8`}
               title={`Timeline index: ${idx}, Line: ${msg.lineno}`}
             >
-              <span className="text-xs text-white mt-1">{msg.lineno}</span>
+              <span className="text-xs text-white mt-1 font-bold">
+  {(() => {
+    const event = normalizeEvent(msg.event);
+
+    if (event === 'line') {
+      return msg.lineno;
+    }
+
+    return event.charAt(0).toUpperCase();
+  })()}
+</span>
+
             </div>
           );
         })}
