@@ -69,7 +69,7 @@ app.add_middleware(
 )
 
 @app.get("/api/sync")
-async def app_start():
+async def app_sync():
     with sqlite3.connect(DATABASE) as db_connection:
         cursor = db_connection.execute(
             """
@@ -115,19 +115,14 @@ async def app_start():
 
 watcher_process = None
 
-def new_watcher_process() -> int:
+def ensure_watcher_running():
     global watcher_process
-    
-    try:
-        watcher_process.terminate()
-    except:
-        pass
-        
-    watcher_process = subprocess.Popen(
-        ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
-    )
-    
-    return watcher_process
+
+    if watcher_process is None or watcher_process.poll() is not None:
+        watcher_process = subprocess.Popen(
+            ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
+        )
+        print("[SSS]")
 
 MAIN_FILE_PATH = Path.cwd() / "shared" / "main.py"
 
@@ -162,6 +157,12 @@ async def import_graph(file: UploadFile = File(...)):
     
     return {"nodes": nodes_from_file(raw_bytes)}
 
+@app.post("/api/restart_watcher")
+async def restart_watcher():
+    ifc_write(_watcher, 'x')
+    # BAD CODE ^
+    
+
 queue = []
 
 @app.websocket("/api/ws")
@@ -181,6 +182,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             ifc_write(_server_to_app, data)
+            ensure_watcher_running()
     async def dfg913fg1():
         while True:
             for info in ifc_read(_app_to_server):

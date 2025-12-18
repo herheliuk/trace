@@ -38,6 +38,40 @@ export default function App() {
     syncFromServer();
   }, []);
 
+  const timelineIndexByLine = useMemo(() => {
+  const map = new Map<string, number>();
+
+  timelineMessages.forEach((msg, idx) => {
+    if (msg.lineno != null) {
+      map.set(msg.lineno.toString(), idx);
+    }
+  });
+
+  return map;
+}, [timelineMessages]);
+
+
+  const handleTimelineClick = (index: number) => {
+    const msg = timelineMessages[index];
+    if (!msg) return;
+
+    send(msg.current_timeline_id);
+    setCurrentMessageIndex(index);
+    setTimelineClicked(true);
+  };
+
+
+  const onNodeClick = useCallback(
+  (_: any, node: any) => {
+    const idx = timelineIndexByLine.get(node.id);
+    if (idx == null) return;
+
+    handleTimelineClick(idx);
+  },
+  [timelineIndexByLine, handleTimelineClick]
+);
+
+
   async function syncFromServer() {
     const res = await fetch(`http${server_uri}/api/sync`);
     const data = await res.json();
@@ -174,15 +208,6 @@ export default function App() {
     []
   );
 
-  const handleTimelineClick = (index: number) => {
-    const msg = timelineMessages[index];
-    if (!msg) return;
-
-    send(msg.current_timeline_id);
-    setCurrentMessageIndex(index);
-    setTimelineClicked(true);
-  };
-
   return (
     <div className="w-screen h-screen relative overflow-hidden flex flex-col">
 
@@ -261,6 +286,7 @@ export default function App() {
           nodes={nodes}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
+          onNodeClick={onNodeClick}
           fitView
           panOnScroll
           proOptions={{ hideAttribution: true }}
