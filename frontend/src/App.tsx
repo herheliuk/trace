@@ -34,8 +34,13 @@ export default function App() {
 
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
 
+  let didSync = false;
+
   useEffect(() => {
-    syncFromServer();
+    if (!didSync) {
+      syncFromServer();
+      didSync = true;
+    }
   }, []);
 
   const timelineIndexByLine = useMemo(() => {
@@ -49,7 +54,6 @@ export default function App() {
 
   return map;
 }, [timelineMessages]);
-
 
   const handleTimelineClick = (index: number) => {
     const msg = timelineMessages[index];
