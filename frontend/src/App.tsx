@@ -60,10 +60,32 @@ export default function App() {
         return next;
       });
 
-      //setNodes((prev) => {
-      //  console.log('idc')
-      //  // resp.nodes could be partial update
-      //}); ???? wth they din't care??
+
+      
+
+
+      const neededId = String(msg.lineno);
+          
+      setNodes(prev => {
+        const idx = prev.findIndex(n => n.id === neededId);
+        if (idx === -1) return prev;
+      
+        const next = [...prev];
+        next[idx] = {
+          ...prev[idx],
+          data: {
+            ...prev[idx].data,
+            framePointer: msg.frame_pointer,
+          },
+        };
+      
+        return next;
+      });
+      
+
+
+
+
 
       setTimelineIndex(msg.timeline_index ?? null);
       setNodeIndex(msg.lineno.toString() ?? null);

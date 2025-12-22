@@ -145,7 +145,10 @@ def nodes_from_file(raw_bytes = None) -> str:
             "id": str(lineno),
             "type": "code",
             "position": {"x": (len(line) - len(line.lstrip())) / 4 * 25, "y": idx * 40},
-            "data": {"line": line.lstrip()},
+            "data": {
+                "line": line.lstrip(),
+                "framePointer": "" # SQL Query...
+            },
         }
         for idx, (lineno, line) in enumerate(lines_with_numbers)
     ]
