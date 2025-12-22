@@ -96,7 +96,7 @@ async def app_sync():
             )
             timeline_entries = [
                 {
-                    "id": row[0],
+                    "timeline_index": row[0],
                     "event": row[1],
                     "target":   row[2],
                     "return_value": row[3],

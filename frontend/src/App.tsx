@@ -5,7 +5,7 @@ import {
   applyNodeChanges
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useState, useEffect, useMemo, useProvider } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { ImportPanel } from './ImportPanel';
 import CodeNode from './CodeNode';
 import { useWebSocket } from "./useWebSocket";
@@ -19,6 +19,9 @@ export default function App() {
   const { message, send } = useWebSocket(`ws${server_uri}/api/ws`);
   const [waitingForResponse, setWaitingForResponse] = useState(false);
 
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const [fileImported, setFileImported] = useState(true);
 
   const [nodes, setNodes] = useState<any[]>([]);
@@ -26,6 +29,23 @@ export default function App() {
 
   const [timelineEntries, setTimelineEntries] = useState<any[]>([]);
   const [timelineIndex, setTimelineIndex] = useState<number | null>(null);
+
+  const scrollToTimelineItem = (idx: number) => {
+    const item = timelineRefs.current[idx];
+    if (item) {
+      item.scrollIntoView({
+        behavior: 'smooth',
+        inline: 'center',
+        block: 'nearest',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (timelineIndex !== null) {
+      scrollToTimelineItem(timelineIndex);
+    }
+  }, [timelineIndex]);
 
   const syncFromServer = async () => {
     const res = await fetch(`http${server_uri}/api/sync`);
@@ -55,34 +75,58 @@ export default function App() {
       const msg = JSON.parse(message);
 
       setTimelineEntries(prev => {
-        const next = prev.slice();
-        next[msg.timeline_index] = msg;
-        return next;
+        const existing = prev[msg.timeline_index];
+
+        if (!existing) {
+          const next = prev.slice();
+          next[msg.timeline_index] = msg;
+          return next;
+        } else {
+          if (JSON.stringify(prev[msg.timeline_index]) === JSON.stringify(msg)) return prev;
+          const next = prev.slice(0, msg.timeline_index - 1);
+          next[msg.timeline_index] = msg;
+          return next;
+        }
       });
 
 
-      
+      const nodeId = String(msg.lineno);
 
-
-      const neededId = String(msg.lineno);
-          
       setNodes(prev => {
-        const idx = prev.findIndex(n => n.id === neededId);
-        if (idx === -1) return prev;
-      
-        const next = [...prev];
-        next[idx] = {
-          ...prev[idx],
-          data: {
-            ...prev[idx].data,
-            framePointer: msg.frame_pointer,
-          },
-        };
-      
-        return next;
-      });
-      
+        const idx = prev.findIndex(node => node.id === nodeId);
+        if (idx < 0) return prev;
 
+        const node = prev[idx];
+
+        return [
+          ...prev.slice(0, idx),
+          {
+            ...node,
+            data: {
+              ...node.data,
+              framePointer: msg.frame_pointer,
+            },
+          },
+          ...prev.slice(idx + 1),
+        ];
+      });
+
+
+      /*
+      const reactFlow = useReactFlow();
+
+      const node = reactFlow.getNode(nodeId);
+
+      const { x, y } = node.position;
+
+      const width = node.width ?? 0;
+      const height = node.height ?? 0;
+
+      reactFlow.setCenter(x + width / 2, y + height / 2, {
+        duration: 400,
+        zoom: reactFlow.getZoom(),
+      });
+      */
 
 
 
@@ -159,7 +203,10 @@ export default function App() {
         </NodeContext.Provider>
       </div>
 
-      <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
+      <div
+        ref={timelineRef}
+        className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]"
+      >
         {timelineEntries?.map((record, idx) => {
           const isSelected = timelineIndex === idx;
 
@@ -171,6 +218,7 @@ export default function App() {
           return (
             <div
               key={idx}
+              ref={(el) => (timelineRefs.current[idx] = el)}
               onClick={() => handleTimelineClick(idx)}
               className={`flex flex-col items-center flex-none w-8 mx-1 cursor-pointer transition-all duration-300
                 ${isSelected
