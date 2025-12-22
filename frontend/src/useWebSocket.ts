@@ -6,7 +6,7 @@ export function useWebSocket(url: string) {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    let reconnectTimeout: NodeJS.Timeout;
+    let reconnectTimeout: any;
 
     const connect = () => {
       ws.current = new WebSocket(url);
@@ -20,30 +20,30 @@ export function useWebSocket(url: string) {
         setMessage(event.data);
       };
 
-      //ws.current.onerror = (err) => {
-      //  console.error("WS Error:", err);
-      //};
+      ws.current.onerror = (err) => {
+        console.error("WS Error:", err);
+      };
 
       ws.current.onclose = () => {
         setIsConnected(false);
-        reconnectTimeout = setTimeout(connect, 1500); // reconnect after 1s
+        reconnectTimeout = setTimeout(connect, 1500);
       };
     };
 
     connect();
 
-return () => {
-  clearTimeout(reconnectTimeout);
+    return () => {
+      clearTimeout(reconnectTimeout);
 
-  if (ws.current) {
-    ws.current.onopen = null;
-    ws.current.onmessage = null;
-    ws.current.onclose = null;
-    ws.current.onerror = null;
-    ws.current.close();
-    ws.current = null;
-  }
-};
+      if (ws.current) {
+        ws.current.onopen = null;
+        ws.current.onmessage = null;
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.close();
+        ws.current = null;
+      }
+    };
 
   }, [url]);
 

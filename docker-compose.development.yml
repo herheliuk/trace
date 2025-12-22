@@ -9,6 +9,7 @@ services:
       - ./fastapi/main.py:/app/main.py
   frontend:
     container_name: frontend
+    restart: unless-stopped
     build:
       context: ./frontend/
       target: base

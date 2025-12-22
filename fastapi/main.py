@@ -44,7 +44,8 @@ with sqlite3.connect(DATABASE) as db_connection:
         );
         CREATE TABLE IF NOT EXISTS state (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            current_timeline_id INTEGER
+            timeline_index INTEGER,
+            node_index INTEGER
         );
     ''')
 
@@ -73,14 +74,17 @@ async def app_sync():
     with sqlite3.connect(DATABASE) as db_connection:
         cursor = db_connection.execute(
             """
-            SELECT current_timeline_id FROM state WHERE id = 1
+            SELECT timeline_index, node_index FROM state WHERE id = 1
             """
         )
-        row = cursor.fetchone()
-        current_timeline_id = row[0] if row else None
+        
+        if row := cursor.fetchone():
+            timeline_index, node_index = row
+        else:
+            timeline_index, node_index = None, None
 
-        timeline = []
-        if current_timeline_id is not None:
+        timeline_entries = []
+        if timeline_index is not None:
             cursor = db_connection.execute(
                 """
                 SELECT id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes
@@ -88,9 +92,9 @@ async def app_sync():
                 WHERE id <= ?
                 ORDER BY id ASC
                 """,
-                (current_timeline_id,)
+                (timeline_index,)
             )
-            timeline = [
+            timeline_entries = [
                 {
                     "id": row[0],
                     "event": row[1],
@@ -109,8 +113,9 @@ async def app_sync():
     
         return {
             "nodes": nodes_from_file(),
-            "timeline": timeline,
-            "current_timeline_id": current_timeline_id
+            "node_index": node_index,
+            "timeline_entries": timeline_entries,
+            "timeline_index": timeline_index
         }
 
 watcher_process = None
@@ -133,16 +138,16 @@ def nodes_from_file(raw_bytes = None) -> str:
         with open(str(MAIN_FILE_PATH), "r") as file:
             text = file.read()
 
-    lines_with_numbers = [(i, line) for i, line in enumerate(text.splitlines(), start=1) if line.strip() and line.lstrip()[0] != '#']
+    lines_with_numbers = [(lineno, line) for lineno, line in enumerate(text.splitlines(), start=1) if line.strip() and line.lstrip()[0] != '#']
 
     return [
         {
-            "id": str(i),
+            "id": str(lineno),
             "type": "code",
             "position": {"x": (len(line) - len(line.lstrip())) / 4 * 25, "y": idx * 40},
-            "data": {"label": line.lstrip()},
+            "data": {"line": line.lstrip()},
         }
-        for idx, (i, line) in enumerate(lines_with_numbers)
+        for idx, (lineno, line) in enumerate(lines_with_numbers)
     ]
 
 @app.post("/api/import")
@@ -162,21 +167,11 @@ async def restart_watcher():
     ifc_write(_watcher, 'x')
     # BAD CODE ^
     
-
 queue = []
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
-    while queue:
-        info = queue.pop(0)
-        try:
-            await websocket.send_text(info)
-        except:
-            print("[a1]", end="", flush=True)
-            queue.insert(0, info)
-            break
     
     async def adviasd():
         while True:
@@ -186,11 +181,7 @@ async def websocket_endpoint(websocket: WebSocket):
     async def dfg913fg1():
         while True:
             for info in ifc_read(_app_to_server):
-                try:
-                    await websocket.send_text(info)
-                except:
-                    print("[aa]", end="", flush=True)
-                    queue.append(info)
+                queue.append(info)
             await asyncio.sleep(.1)
     async def t4812():
         while True:

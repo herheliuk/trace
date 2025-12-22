@@ -1,13 +1,13 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useContext } from 'react';
 //import { Handle, Position } from '@xyflow/react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark as mainTheme, oneLight as highlightTheme } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { NodeContext } from "./NodeContext";
 
 interface CodeNodeProps {
   id: string;
   data: {
-    label: string;
-    highlighted?: boolean;
+    line: string;
     framePointer?: string | null;
   };
 }
@@ -16,17 +16,18 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
   const labelRef = useRef<HTMLDivElement>(null);
   const [labelWidth, setLabelWidth] = useState(0);
 
+  const { nodeIndex, setNodeIndex } = useContext(NodeContext);
+
   useEffect(() => {
     if (labelRef.current) {
       setLabelWidth(labelRef.current.offsetWidth);
     }
   }, [id, data.framePointer]);
 
-  const labelColor = data.highlighted ? '#ffff00' : '#ffffff';
+  const highlighted = id === nodeIndex;
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      {/* LABEL — PURE OVERLAY, ZERO LAYOUT IMPACT */}
       <div
         ref={labelRef}
         style={{
@@ -34,7 +35,7 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
           top: '50%',
           left: -(labelWidth + 8),
           transform: 'translateY(-50%)',
-          color: labelColor,
+          color: highlighted ? '#ffff00' : '#ffffff',
           fontSize: 12,
           fontFamily: 'monospace',
           fontWeight: 500,
@@ -54,10 +55,9 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
         <span>{id}</span>
       </div>
 
-      {/* NODE BODY — TRUE SIZE & POSITION */}
       <div
         style={{
-          background: data.highlighted ? '#FAFAFA' : '#292C33',
+          background: highlighted ? '#FAFAFA' : '#292C33',
           borderRadius: 6,
           padding: 8,
           width: 'fit-content',
@@ -65,7 +65,7 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
       >
         <SyntaxHighlighter
           language="python"
-          style={data.highlighted ? highlightTheme : mainTheme}
+          style={highlighted ? highlightTheme : mainTheme}
           wrapLines={true}
           showLineNumbers={false}
           customStyle={{
@@ -76,11 +76,8 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
             lineHeight: '18px',
           }}
         >
-          {data.label}
+          {data.line}
         </SyntaxHighlighter>
-
-        {/*<Handle type="target" position={Position.Top} />
-        <Handle type="source" position={Position.Bottom} />*/}
       </div>
     </div>
   );

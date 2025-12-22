@@ -29,17 +29,20 @@ def db_save(send_back) -> int:
         db.execute(
             """
             INSERT OR REPLACE INTO timeline (id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes)
-            VALUES (:current_timeline_id, :event, :target, :return_value, :filename, :frame_pointer, :function, :lineno, :segment, :global_changes, :local_changes)
+            VALUES (:timeline_index, :event, :target, :return_value, :filename, :frame_pointer, :function, :lineno, :segment, :global_changes, :local_changes)
             """,
             send_back
         )
     
         db.execute(
             """
-            INSERT OR REPLACE INTO state (id, current_timeline_id)
-            VALUES (1, :current_timeline_id)
+            INSERT OR REPLACE INTO state (id, timeline_index, node_index)
+            VALUES (1, :timeline_index, :node_index)
             """,
-            {"current_timeline_id": send_back['current_timeline_id']}
+            {
+                "timeline_index": send_back['timeline_index'],
+                "node_index": send_back['lineno']
+            }
         )
 
 for name in (
@@ -60,12 +63,15 @@ class StdoutRedirector:
 sys.stdout = StdoutRedirector()
 sys.stderr = sys.stdout
 
-def print_step(text):
-    ifc_write(_app_to_server, json.dumps(text))
+#def print_step(text):
+#    ifc_write(_app_to_server, json.dumps(text))
             
 def send_update(send_back, traceback, error):
     if traceback:
-        ifc_write(_app_to_server, json.dumps({'traceback': traceback, 'error': error}))
+        ifc_write(_app_to_server, {
+            'traceback': traceback,
+            'error': error
+        })
     else:
         criu.dump(allow_overwrite=True)
         
@@ -75,7 +81,7 @@ def send_update(send_back, traceback, error):
             except:
                 send_back[key] = json.dumps(str(value))
         
-        send_back['current_timeline_id'] = criu._last_dump_number
+        send_back['timeline_index'] = criu._last_dump_number
         
         db_save(send_back)
         
@@ -83,16 +89,20 @@ def send_update(send_back, traceback, error):
     running = True
     while running:
         for resp in ifc_read(_server_to_app):
-            match resp:
+            msg = json.loads(resp)
+            match msg['type']:
                 case 'continue':
                     running = False
-                case resp:
+                case 'new_timeline_index':
                     try:
-                        int(resp)
-                        ifc_write(_watcher, resp)
+                        new_timeline_index = msg['new_timeline_index']
+                        int(new_timeline_index)
+                        ifc_write(_watcher, new_timeline_index)
                         _exit(0)
                     except Exception as error:
                         print(error)
+                case 'new_node_index':
+                    ifc_write(_app_to_server, 'not supported action. {new_node_index}')
             
         sleep(.1)
     
