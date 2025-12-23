@@ -167,8 +167,11 @@ async def import_graph(file: UploadFile = File(...)):
 
 @app.post("/api/restart_watcher")
 async def restart_watcher():
-    if watcher_process:
+    try:
         watcher_process.kill()
+        return Response(status_code=201)
+    except:
+        return Response(status_code=400)
     
 queue = []
 

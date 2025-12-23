@@ -83,7 +83,7 @@ export default function App() {
           return next;
         } else {
           if (JSON.stringify(prev[msg.timeline_index]) === JSON.stringify(msg)) return prev;
-          const next = prev.slice(0, msg.timeline_index - 1);
+          const next = prev.slice(0, msg.timeline_index);
           next[msg.timeline_index] = msg;
           return next;
         }
