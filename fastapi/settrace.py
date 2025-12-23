@@ -24,25 +24,56 @@ import sqlite3
 
 DATABASE = Path.cwd() / 'trace.db'
 
-def db_save(send_back) -> int:
-    with sqlite3.connect(DATABASE) as db:
-        db.execute(
+def db_save(send_back) -> None:
+    with sqlite3.connect(DATABASE) as db_connection:
+        cursor = db_connection.cursor()
+        
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        cursor.execute(
             """
-            INSERT OR REPLACE INTO timeline (id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes)
-            VALUES (:timeline_index, :event, :target, :return_value, :filename, :frame_pointer, :function, :lineno, :segment, :global_changes, :local_changes)
+            INSERT INTO files (file, timeline_id, line_number)
+            VALUES (:file, :id, :line_number)
+            ON CONFLICT(file) DO UPDATE SET
+                timeline_id = excluded.timeline_id,
+                line_number = excluded.line_number;
             """,
             send_back
         )
-    
-        db.execute(
+        
+        """ replace the code above with the code below, once we handle the files properly
+        UPDATE files
+        SET timeline_id = :id,
+            line_number = :line_number
+        WHERE file = :file;
+        """
+        
+        cursor.execute( # may cause bugs, we probably need to set the pointer exclusively manually
             """
-            INSERT OR REPLACE INTO state (id, timeline_index, node_index)
-            VALUES (1, :timeline_index, :node_index)
+            INSERT OR REPLACE INTO state (
+                id, file
+            )
+            VALUES (
+                1, :file
+            )
             """,
-            {
-                "timeline_index": send_back['timeline_index'],
-                "node_index": send_back['lineno']
-            }
+            send_back
+        )
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO timeline (
+                id, event, target, return_value, file,
+                frame_id, function, line_number, source_segment,
+                global_diff, local_diff, traceback, error
+            )
+            VALUES (
+                :id, :event, :target, :return_value, :file,
+                :frame_id, :function, :line_number, :source_segment,
+                :global_diff, :local_diff, :traceback, :error
+            )
+            """,
+            send_back
         )
 
 for name in (
@@ -53,26 +84,40 @@ for name in (
     file_txt = Path.cwd() / f'{name}.txt'
     globals()[name] = str(file_txt)
 
-class StdoutRedirector:
+class StdOutRedirector:
     def flush(self):
-        pass
+        ifc_write(_app_to_server, {
+            "type": "flush",
+            "data": "stdout"
+        })
     
     def write(self, text):
-        ifc_write(_app_to_server, text)
+        ifc_write(_app_to_server, {
+            "type": "stdout",
+            "data": text
+        })
 
-sys.stdout = StdoutRedirector()
-sys.stderr = sys.stdout
+class StdErrRedirector:
+    def flush(self):
+        ifc_write(_app_to_server, {
+            "type": "flush",
+            "data": "stderr"
+        })
+    
+    def write(self, text):
+        ifc_write(_app_to_server, {
+            "type": "stderr",
+            "data": text
+        })
+
+sys.stdout = StdOutRedirector()
+sys.stderr = StdErrRedirector()
 
 #def print_step(text):
 #    ifc_write(_app_to_server, json.dumps(text))
-            
-def send_update(send_back, traceback, error):
-    if traceback:
-        ifc_write(_app_to_server, {
-            'traceback': traceback,
-            'error': error
-        })
-    else:
+
+def send_data(send_back):
+    if True:
         criu.dump(allow_overwrite=True)
         
         for key, value in send_back.items():
@@ -81,23 +126,25 @@ def send_update(send_back, traceback, error):
             except:
                 send_back[key] = json.dumps(str(value))
         
-        send_back['timeline_index'] = criu._last_dump_number
+        send_back['id'] = criu._last_dump_number
         
         db_save(send_back)
         
-        ifc_write(_app_to_server, json.dumps(send_back))
+        ifc_write(_app_to_server, {
+            "type": "event",
+            "data": send_back
+        })
     running = True
     while running:
-        for resp in ifc_read(_server_to_app):
-            msg = json.loads(resp)
-            match msg['type']:
+        for message in ifc_read(_server_to_app):
+            match message['type']:
                 case 'continue':
                     running = False
-                case 'new_timeline_index':
+                case 'new_timeline_id':
                     try:
-                        new_timeline_index = msg['new_timeline_index']
-                        int(new_timeline_index)
-                        ifc_write(_watcher, new_timeline_index)
+                        new_timeline_id = message['new_timeline_id']
+                        int(new_timeline_id)
+                        ifc_write(_watcher, new_timeline_id)
                         _exit(0)
                     except Exception as error:
                         print(error)
@@ -144,54 +191,60 @@ def main(debug_script_path: Path):
 
             last_functions = last_files[str_code_filepath]
             
-            frame_pointer = id(frame)
+            frame_id = id(frame)
             
-            event_info, traceback, error = None, None, None
-            
-            global_changes, local_changes = {}, {}
+            global_diff, local_diff = {}, {}
 
             if event in ('line', 'return'):
-                old_globals, old_locals = last_functions[frame_pointer]
+                old_globals, old_locals = last_functions[frame_id]
 
-                global_changes = diff_scope(old_globals, current_globals)
-                local_changes = diff_scope(old_locals, current_locals) if is_not_module else {}
-
-            segment = source_code_cache[str_code_filepath].get(frame.f_lineno, {}).get('segment', '')
-
-            event_info = {
+                global_diff = diff_scope(old_globals, current_globals)
+                local_diff = diff_scope(old_locals, current_locals) if is_not_module else {}
+                
+                #"global_diff": global_diff,
+                #"local_diff": local_diff,
+            
+            source_segment = source_code_cache[str_code_filepath].get(frame.f_lineno, {}).get('segment', '')
+            
+            data = {
                 'event': event,
                 'target': target,
-                'return_value': arg,
-                'filename': filename,
-                'frame_pointer': frame_pointer,
+                'file': filename,
+                'frame_id': frame_id,
                 'function': function_name,
-                'lineno': frame.f_lineno,
-                'segment': segment,
-                'global_changes': global_changes,
-                'local_changes': local_changes
+                'line_number': frame.f_lineno,
+                'source_segment': source_segment,
+                "global_diff": global_diff,
+                "local_diff": local_diff,
+                "return_value": arg,
+                "traceback": None,
+                "error": None
             }
-
+            
             if event == 'line':
-                send_update(event_info, traceback, error)
-                last_functions[frame_pointer] = current_globals, current_locals
+                send_data(data)
+                last_functions[frame_id] = current_globals, current_locals
                 return
 
             elif event == 'call':
-                send_update(event_info, traceback, error)
+                send_data(data)
                 #if current_locals: print_step(pretty_scope(current_locals))
-                last_functions.setdefault(frame_pointer, (current_globals, current_locals))
+                last_functions.setdefault(frame_id, (current_globals, current_locals))
                 return trace_function
 
             elif event == 'return':
-                send_update(event_info, traceback, error)
-                del last_functions[frame_pointer]
+                send_data(data)
+                # "return_value": arg
+                del last_functions[frame_id]
                 return
 
             elif event == 'exception':
                 exc_type, exc_value, exc_traceback = arg
-                traceback = ''.join(format_tb(exc_traceback))
-                error = f"{exc_type.__name__}: {exc_value}"
-                send_update(event_info, traceback, error)
+                event.update({
+                    "traceback": ''.join(format_tb(exc_traceback)),
+                    "error": f"{exc_type.__name__}: {exc_value}"
+                })
+                send_data(data)
                 return
         
         source_code = debug_script_path.read_text()

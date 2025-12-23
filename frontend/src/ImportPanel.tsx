@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { PanelButton } from './ui/PanelButton'
 import { server_uri } from './config'
 
-export function ImportPanel({ setFileImported, setNodes, syncFromServer }: { setFileImported: (v: boolean) => void, setNodes: any }) {
+export function ImportPanel({ setFileImported }: { setFileImported: (v: boolean) => void }) {
   const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -21,7 +21,7 @@ export function ImportPanel({ setFileImported, setNodes, syncFromServer }: { set
 
       if (!response.ok) throw new Error('Failed to import file')
 
-      await syncFromServer();
+      location.reload()
 
       setFileImported(true)
     } finally {

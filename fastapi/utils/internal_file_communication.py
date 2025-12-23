@@ -16,7 +16,7 @@ def file_lock(file):
         fcntl.flock(file, fcntl.LOCK_UN)
 
 
-def ifc_read(filepath: str) -> List[Any]:
+def ifc_read(filepath: str, keep_json=False) -> List[Any]:
     messages: List[Any] = []
 
     open(filepath, "a").close()
@@ -35,19 +35,24 @@ def ifc_read(filepath: str) -> List[Any]:
         if not line:
             continue
         try:
-            messages.append(json.loads(line))
+            if keep_json:
+                messages.append(line)
+            else:
+                messages.append(json.loads(line))
         except json.JSONDecodeError:
             pass
 
     return messages
 
-
-def ifc_write(filepath: str, data: Any) -> None:
+def ifc_write(filepath: str, data: Any, is_json=False) -> None:
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
     with open(filepath, "a", buffering=1) as file:
         with file_lock(file):
-            file.write(json.dumps(data))
+            if is_json:
+                file.write(data)
+            else:
+                file.write(json.dumps(data))
             file.write("\n")
             file.flush()
             os.fsync(file.fileno())

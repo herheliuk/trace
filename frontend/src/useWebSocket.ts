@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useWebSocket(url: string) {
+export function useWebSocket(url: string, messageReceived) {
   const ws = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const openWs = () => {
     let reconnectTimeout: any;
 
     const connect = () => {
@@ -13,20 +12,16 @@ export function useWebSocket(url: string) {
 
       ws.current.onopen = () => {
         setIsConnected(true);
-        console.log("WS Connected");
+        console.info(`${location.host}: Backend is online!`);
       };
 
       ws.current.onmessage = (event) => {
-        setMessage(event.data);
-      };
-
-      ws.current.onerror = (err) => {
-        console.error("WS Error:", err);
+        messageReceived(event.data)
       };
 
       ws.current.onclose = () => {
         setIsConnected(false);
-        reconnectTimeout = setTimeout(connect, 1500);
+        reconnectTimeout = setTimeout(connect, 2000);
       };
     };
 
@@ -44,7 +39,13 @@ export function useWebSocket(url: string) {
         ws.current = null;
       }
     };
+  }
 
+  let xxx = true;
+
+  useEffect(() => {
+    if (xxx) openWs()
+    xxx = false
   }, [url]);
 
   const send = (data: any) => {
@@ -55,5 +56,5 @@ export function useWebSocket(url: string) {
     }
   };
 
-  return { isConnected, message, send };
+  return { isConnected, send };
 }

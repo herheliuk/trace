@@ -16,7 +16,6 @@ import { NodeContext } from './NodeContext';
 export default function App() {
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
 
-  const { message, send } = useWebSocket(`ws${server_uri}/api/ws`);
   const [waitingForResponse, setWaitingForResponse] = useState(false);
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -47,14 +46,18 @@ export default function App() {
     }
   }, [timelineIndex]);
 
+  const handleSync = async (data) => {
+    setNodes(data.nodes);
+    setNodeIndex(data.node_id?.toString());
+    setTimelineEntries(data.timeline);
+    setTimelineIndex(data.timeline_id);
+  };
+
   const syncFromServer = async () => {
     const res = await fetch(`http${server_uri}/api/sync`);
     const data = await res.json();
 
-    setNodes(data.nodes);
-    setNodeIndex(data.node_index?.toString());
-    setTimelineEntries(data.timeline_entries);
-    setTimelineIndex(data.timeline_index);
+    handleSync(data);
   };
 
   let didSync = false;
@@ -65,91 +68,112 @@ export default function App() {
     }
   }, []);
 
-  const treatMessage = () => {
-    setWaitingForResponse(false);
-    if (!message) return;
+  const handleEvent = async (data) => {
+    setTimelineEntries(prev => {
+      const existing = prev[data.id];
 
-    console.info(message)
+      if (!existing) {
+        const next = prev.slice();
+        next[data.id] = data;
+        return next;
+      } else {
+        if (JSON.stringify(prev[data.id]) === JSON.stringify(data)) return prev;
+        const next = prev.slice(0, data.id);
+        next[data.id] = data;
+        return next;
+      }
+    });
 
-    try {
-      const msg = JSON.parse(message);
+    const nodeId = String(data.line_number);
 
-      setTimelineEntries(prev => {
-        const existing = prev[msg.timeline_index];
+    setNodes(prev => {
+      const idx = prev.findIndex(node => node.id === nodeId);
+      if (idx < 0) return prev;
 
-        if (!existing) {
-          const next = prev.slice();
-          next[msg.timeline_index] = msg;
-          return next;
-        } else {
-          if (JSON.stringify(prev[msg.timeline_index]) === JSON.stringify(msg)) return prev;
-          const next = prev.slice(0, msg.timeline_index);
-          next[msg.timeline_index] = msg;
-          return next;
-        }
-      });
+      const node = prev[idx];
 
-
-      const nodeId = String(msg.lineno);
-
-      setNodes(prev => {
-        const idx = prev.findIndex(node => node.id === nodeId);
-        if (idx < 0) return prev;
-
-        const node = prev[idx];
-
-        return [
-          ...prev.slice(0, idx),
-          {
-            ...node,
-            data: {
-              ...node.data,
-              framePointer: msg.frame_pointer,
-            },
+      return [
+        ...prev.slice(0, idx),
+        {
+          ...node,
+          data: {
+            ...node.data,
+            framePointer: data.frame_id,
           },
-          ...prev.slice(idx + 1),
-        ];
-      });
+        },
+        ...prev.slice(idx + 1),
+      ];
+    });
 
+    /*
+    const reactFlow = useReactFlow();
 
-      /*
-      const reactFlow = useReactFlow();
+    const node = reactFlow.getNode(nodeId);
 
-      const node = reactFlow.getNode(nodeId);
+    const { x, y } = node.position;
 
-      const { x, y } = node.position;
+    const width = node.width ?? 0;
+    const height = node.height ?? 0;
 
-      const width = node.width ?? 0;
-      const height = node.height ?? 0;
+    reactFlow.setCenter(x + width / 2, y + height / 2, {
+      duration: 400,
+      zoom: reactFlow.getZoom(),
+    });
+    */
 
-      reactFlow.setCenter(x + width / 2, y + height / 2, {
-        duration: 400,
-        zoom: reactFlow.getZoom(),
-      });
-      */
+    setTimelineIndex(data.id ?? null);
+    setNodeIndex(data.line_number.toString() ?? null);
+  }
 
+  const messageReceived = (jsonString) => {
+    if (!jsonString) return;
+    setWaitingForResponse(false);
 
+    const message = JSON.parse(jsonString);
 
+    switch (message.type) {
+      case "event":
+        handleEvent(message.data)
+        break;
 
-      setTimelineIndex(msg.timeline_index ?? null);
-      setNodeIndex(msg.lineno.toString() ?? null);
+      case "sync":
+        handleSync(message.data)
+        break;
 
-    } catch (err) {
-      console.error('Failed to parse WS message', err);
+      case "stdout":
+        console.debug(message.data)
+        break;
+
+      case "stderr":
+        console.error(message.data)
+        break;
+
+      case "flush":
+        switch (message.data) {
+          case "stdout":
+            // Unsupported
+            break;
+
+          case "stderr":
+            // Unsupported
+            break;
+        }
+        break;
+
+      default:
+        console.warn("WS: Unknown message.type:", message.type);
     }
   }
 
-  useEffect(() => {
-    treatMessage()
-  }, [message]);
+  const { isConnected, send } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<any>[]) => setNodes((snap) => applyNodeChanges(changes, snap)),
+    (changes: NodeChange<any>[]) => setNodes((snapshot) => applyNodeChanges(changes, snapshot)),
     []
   );
 
-  const handleTimelineClick = useCallback((idx: number) => {
-    send(JSON.stringify({ type: 'new_timeline_index', new_timeline_index: idx }));
+  const handleTimelineClick = useCallback((index: number) => {
+    send(JSON.stringify({ type: 'new_timeline_id', new_timeline_id: index }));
   }, [send]);
 
   const onNodeClick = useCallback(
@@ -189,7 +213,7 @@ export default function App() {
             className="w-full h-full bg-transparent"
           >
 
-            <ImportPanel setNodes={setNodes} setFileImported={setFileImported} syncFromServer={syncFromServer} />
+            <ImportPanel setFileImported={setFileImported} />
 
             <WebSocketPanel
               send={send}
@@ -212,7 +236,7 @@ export default function App() {
 
           const label =
             record?.event?.includes('line') ?
-              record.lineno :
+              record.line_number :
               record?.event?.replace(/^"+|"+$/g, '').charAt(0).toUpperCase();
 
           return (
@@ -226,7 +250,7 @@ export default function App() {
                   : 'bg-gray-400/50 border-gray-600'
                 }
                 rounded-full border-2 h-8`}
-              title={`Timeline index: ${idx}, Line: ${record.lineno}`}
+              title={`Timeline index: ${idx}, Line: ${record.line_number}`}
             >
               <span className="text-xs text-white mt-1 font-bold">
                 {label}

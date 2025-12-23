@@ -8,7 +8,7 @@ import { NodeContext } from "./NodeContext";
 interface CodeNodeProps {
   id: string;
   data: {
-    line: string;
+    source_segment: string;
     framePointer?: string | null;
   };
 }
@@ -77,7 +77,7 @@ export default function CodeNode({ id, data }: CodeNodeProps) {
             lineHeight: '18px',
           }}
         >
-          {data.line}
+          {data.source_segment}
         </SyntaxHighlighter>
       </div>
     </div>

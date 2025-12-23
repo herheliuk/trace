@@ -1,7 +1,8 @@
 
 import asyncio
+import json
 import subprocess
-from fastapi import FastAPI, UploadFile, File, Response
+from fastapi import FastAPI, UploadFile, File, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from pathlib import Path
@@ -16,37 +17,54 @@ DATABASE.unlink(missing_ok=True)
 
 with sqlite3.connect(DATABASE) as db_connection:
     db_connection.executescript('''
+        CREATE TABLE IF NOT EXISTS files (
+            file TEXT NOT NULL,
+            
+            timeline_id INTEGER,    -- timeline pointer
+            line_number INTEGER,    -- node pointer
+            
+            PRIMARY KEY (file)
+        );
+        
+        CREATE TABLE IF NOT EXISTS state (
+            id INTEGER CHECK (id = 1),
+            
+            file TEXT,    -- file pointer
+
+            PRIMARY KEY (id)
+            
+            FOREIGN KEY (file)
+                REFERENCES files(file)
+                ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS timeline (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file TEXT NOT NULL,
+            id INTEGER NOT NULL,
             
             event TEXT,
             target TEXT,
             return_value TEXT,
-            filename TEXT,
-            frame_pointer TEXT,
+            frame_id INTEGER,
             function TEXT,
-            lineno TEXT,
-            segment TEXT,
-            global_changes TEXT,
-            local_changes TEXT
+            line_number INTEGER,
+            source_segment TEXT,
+            global_diff TEXT,   -- JSON
+            local_diff TEXT,    -- JSON
+            traceback TEXT,
+            error TEXT,
+            
+            -- +? time_taken REAL
 
---            code TEXT,
---            action TEXT,
---
---            return_value TEXT,
---            scope TEXT,
---
---            frame INTEGER
---            -- time_taken REAL,
-
-            -- sha256 TEXT UNIQUE,
-            -- last_sha256 TEXT
-        );
-        CREATE TABLE IF NOT EXISTS state (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            timeline_index INTEGER,
-            node_index INTEGER
-        );
+            -- +? sha256 TEXT UNIQUE
+            -- +? last_sha256 TEXT
+            
+            PRIMARY KEY (file, id),
+            
+            FOREIGN KEY (file)
+                REFERENCES files(file)
+                ON DELETE CASCADE
+        )
     ''')
 
 for name in (
@@ -70,52 +88,87 @@ app.add_middleware(
 )
 
 @app.get("/api/sync")
-async def app_sync():
+async def app_sync() -> dict:
     with sqlite3.connect(DATABASE) as db_connection:
-        cursor = db_connection.execute(
+        cursor = db_connection.cursor()
+        
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        cursor.execute(
             """
-            SELECT timeline_index, node_index FROM state WHERE id = 1
+            SELECT file
+            FROM state
+            WHERE id = 1
             """
         )
         
         if row := cursor.fetchone():
-            timeline_index, node_index = row
+            file, = row
         else:
-            timeline_index, node_index = None, None
+            raise HTTPException(status_code=404, detail="no pointer to a file")
+        
+        cursor.execute(
+            """
+            SELECT timeline_id, line_number
+            FROM files
+            WHERE file = :file
+            """,
+            {
+                "file": file
+            }
+        )
+        
+        if row := cursor.fetchone():
+            timeline_id, node_id = row
+        else:
+            raise HTTPException(status_code=404, detail="no last IDs for this file")
 
-        timeline_entries = []
-        if timeline_index is not None:
-            cursor = db_connection.execute(
+        timeline = []
+        
+        if timeline_id is not None:
+            cursor.execute(
                 """
-                SELECT id, event, target, return_value, filename, frame_pointer, function, lineno, segment, global_changes, local_changes
+                SELECT  id, event, target, return_value, file,
+                        frame_id, function, line_number, source_segment,
+                        global_diff, local_diff, traceback, error
                 FROM timeline
-                WHERE id <= ?
+                WHERE id <= :id
+                  AND file == :file
                 ORDER BY id ASC
                 """,
-                (timeline_index,)
-            )
-            timeline_entries = [
                 {
-                    "timeline_index": row[0],
-                    "event": row[1],
-                    "target":   row[2],
-                    "return_value": row[3],
-                    "filename": row[4],
-                    "frame_pointer": row[5],
-                    "function": row[6],
-                    "lineno": row[7],
-                    "segment": row[8],
-                    "global_changes": row[9],
-                    "local_changes": row[10]
+                    "id": timeline_id,
+                    "file": file
                 }
-                for row in cursor.fetchall()
-            ]
+            )
+            
+            if rows := cursor.fetchall():
+                timeline = [
+                    {
+                        "id": row[0],
+                        "event": row[1],
+                        "target":   row[2],
+                        "return_value": row[3],
+                        "file": row[4],
+                        "frame_id": row[5],
+                        "function": row[6],
+                        "line_number": row[7],
+                        "source_segment": row[8],
+                        "global_diff": row[9],
+                        "local_diff": row[10],
+                        "traceback": row[11],
+                        "error": row[12]
+                    }
+                    for row in rows
+                ]
+            else:
+                raise HTTPException(status_code=400, detail='no timeline for this timeline_id')
     
         return {
             "nodes": nodes_from_file(),
-            "node_index": node_index,
-            "timeline_entries": timeline_entries,
-            "timeline_index": timeline_index
+            "node_id": node_id,
+            "timeline": timeline,
+            "timeline_id": timeline_id
         }
 
 watcher_process = None
@@ -127,7 +180,7 @@ def ensure_watcher_running():
         watcher_process = subprocess.Popen(
             ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
         )
-        print("[SSS]")
+        print("[SSS]", flush=True)
 
 MAIN_FILE_PATH = Path.cwd() / "shared" / "main.py"
 
@@ -138,19 +191,19 @@ def nodes_from_file(raw_bytes = None) -> str:
         with open(str(MAIN_FILE_PATH), "r") as file:
             text = file.read()
 
-    lines_with_numbers = [(lineno, line) for lineno, line in enumerate(text.splitlines(), start=1) if line.strip() and line.lstrip()[0] != '#']
+    lines_with_numbers = [(lineno, source_segment) for lineno, source_segment in enumerate(text.splitlines(), start=1) if source_segment.strip() and source_segment.lstrip()[0] != '#']
 
     return [
         {
             "id": str(lineno),
             "type": "code",
-            "position": {"x": (len(line) - len(line.lstrip())) / 4 * 25, "y": idx * 40},
+            "position": {"x": (len(source_segment) - len(source_segment.lstrip())) / 4 * 25, "y": idx * 40},
             "data": {
-                "line": line.lstrip(),
+                "source_segment": source_segment.lstrip(),
                 "framePointer": "" # SQL Query...
             },
         }
-        for idx, (lineno, line) in enumerate(lines_with_numbers)
+        for idx, (lineno, source_segment) in enumerate(lines_with_numbers)
     ]
 
 @app.post("/api/upload")
@@ -163,6 +216,10 @@ async def import_graph(file: UploadFile = File(...)):
     with open(str(MAIN_FILE_PATH), "wb") as file:
         file.write(raw_bytes)
     
+    # change how we set the pointer in the future! (code below)
+    
+    ensure_watcher_running()
+    
     return Response(status_code=201)
 
 @app.post("/api/restart_watcher")
@@ -170,38 +227,60 @@ async def restart_watcher():
     try:
         watcher_process.kill()
         return Response(status_code=201)
-    except:
-        return Response(status_code=400)
-    
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
 queue = []
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
-    async def adviasd():
+    async def ws_to_app():
         while True:
-            data = await websocket.receive_text()
-            ifc_write(_server_to_app, data)
-            ensure_watcher_running()
-    async def dfg913fg1():
+            try:
+                data = await websocket.receive_text()
+                ifc_write(_server_to_app, data, is_json=True)
+                ensure_watcher_running()
+            except Exception as error:
+                print(f"[ccc] {error}", flush=True)
+                raise
+
+    async def app_to_ws():
+        breaking = False
+        warns = set()
         while True:
-            for info in ifc_read(_app_to_server):
-                queue.append(info)
+            for message in ifc_read(_app_to_server, keep_json=True):
+                try:
+                    await websocket.send_text(message)
+                except Exception as error:
+                    breaking = True
+                    queue.append(message)
+                    warns.add(error)
+
+            if breaking:
+                for warn in warns:
+                    print(f"[ddd] {warn}", flush=True)
+                raise
+            
             await asyncio.sleep(.1)
-    async def t4812():
+            
+    async def resend():
         while True:
             while queue:
-                info = queue.pop(0)
+                message = queue.pop(0)
                 try:
-                    await websocket.send_text(info)
+                    await websocket.send_text(message)
                 except:
-                    print("[b4]", end="", flush=True)
-                    queue.insert(0, info)
-                    break
+                    print("[b4]", flush=True)
+                    queue.insert(0, message)
+                    raise
             await asyncio.sleep(.1)
-    await asyncio.gather(
-        adviasd(),
-        dfg913fg1(),
-        t4812()
-    )
+    try:
+        await asyncio.gather(
+            ws_to_app(),
+            app_to_ws(),
+            resend()
+        )
+    except Exception as error:
+        print(error)

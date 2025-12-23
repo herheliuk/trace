@@ -31,21 +31,10 @@ systemctl reload caddy
 
 run
 
-term 1
-
 ```
 # pwd ./trace/
 docker compose -f docker-compose.development.yml up frontend -d
 ```
-
-term 2
-```
-# pwd ./fastapi/
-source env.sh
-python settrace.py
-```
-
-term 1
 
 ```
 # pwd ./fastapi/
