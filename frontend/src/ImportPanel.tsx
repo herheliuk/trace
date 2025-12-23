@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { PanelButton } from './ui/PanelButton'
 import { server_uri } from './config'
 
-export function ImportPanel({ setFileImported, setNodes }: { setFileImported: (v: boolean) => void, setNodes: any }) {
+export function ImportPanel({ setFileImported, setNodes, syncFromServer }: { setFileImported: (v: boolean) => void, setNodes: any }) {
   const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -14,17 +14,16 @@ export function ImportPanel({ setFileImported, setNodes }: { setFileImported: (v
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch(`http${server_uri}/api/import`, {
+      const response = await fetch(`http${server_uri}/api/upload`, {
         method: 'POST',
         body: formData,
       })
 
       if (!response.ok) throw new Error('Failed to import file')
 
-      const data = await response.json()
-      setNodes(data.nodes)
-      // setEdges(data.edges)
-      setFileImported(true)  // <--- mark that a file has been imported
+      await syncFromServer();
+
+      setFileImported(true)
     } finally {
       setLoading(false)
       if (inputRef.current) inputRef.current.value = ''

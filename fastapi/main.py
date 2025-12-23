@@ -1,7 +1,7 @@
 
 import asyncio
 import subprocess
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from pathlib import Path
@@ -153,22 +153,22 @@ def nodes_from_file(raw_bytes = None) -> str:
         for idx, (lineno, line) in enumerate(lines_with_numbers)
     ]
 
-@app.post("/api/import")
+@app.post("/api/upload")
 async def import_graph(file: UploadFile = File(...)):
-    ifc_write(_watcher, 'x')
-    # BAD CODE ^
+    if watcher_process: # need to create a pointer in the db instead!
+        watcher_process.kill()
     
     raw_bytes = await file.read()
     
     with open(str(MAIN_FILE_PATH), "wb") as file:
         file.write(raw_bytes)
     
-    return {"nodes": nodes_from_file(raw_bytes)}
+    return Response(status_code=201)
 
 @app.post("/api/restart_watcher")
 async def restart_watcher():
-    ifc_write(_watcher, 'x')
-    # BAD CODE ^
+    if watcher_process:
+        watcher_process.kill()
     
 queue = []
 

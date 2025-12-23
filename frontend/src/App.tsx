@@ -189,7 +189,7 @@ export default function App() {
             className="w-full h-full bg-transparent"
           >
 
-            <ImportPanel setNodes={setNodes} setFileImported={setFileImported} />
+            <ImportPanel setNodes={setNodes} setFileImported={setFileImported} syncFromServer={syncFromServer} />
 
             <WebSocketPanel
               send={send}
