@@ -193,6 +193,42 @@ def nodes_from_file(raw_bytes = None) -> str:
 
     lines_with_numbers = [(lineno, source_segment) for lineno, source_segment in enumerate(text.splitlines(), start=1) if source_segment.strip() and source_segment.lstrip()[0] != '#']
 
+    line_number_frame_id = None
+
+    with sqlite3.connect(DATABASE) as db_connection:
+        cursor = db_connection.cursor()
+        
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        cursor.execute(
+            """
+            SELECT file
+            FROM state
+            WHERE id = 1
+            """
+        )
+        
+        if row := cursor.fetchone():
+            file, = row
+            
+            cursor.execute(
+                """
+                SELECT line_number, frame_id
+                FROM timeline
+                WHERE file == :file
+                ORDER BY id ASC
+                """,
+                {
+                    "file": file
+                }
+            )
+
+            if rows := cursor.fetchall():
+                line_number_frame_id = {
+                    row[0]: row[1]
+                    for row in rows
+                }
+
     return [
         {
             "id": str(lineno),
@@ -200,7 +236,7 @@ def nodes_from_file(raw_bytes = None) -> str:
             "position": {"x": (len(source_segment) - len(source_segment.lstrip())) / 4 * 25, "y": idx * 40},
             "data": {
                 "source_segment": source_segment.lstrip(),
-                "framePointer": "" # SQL Query...
+                "framePointer": line_number_frame_id[lineno] if line_number_frame_id and lineno in line_number_frame_id else None
             },
         }
         for idx, (lineno, source_segment) in enumerate(lines_with_numbers)
