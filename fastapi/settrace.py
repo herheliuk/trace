@@ -240,7 +240,7 @@ def main(debug_script_path: Path):
 
             elif event == 'exception':
                 exc_type, exc_value, exc_traceback = arg
-                event.update({
+                data.update({
                     "traceback": ''.join(format_tb(exc_traceback)),
                     "error": f"{exc_type.__name__}: {exc_value}"
                 })
