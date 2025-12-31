@@ -241,9 +241,13 @@ def nodes_from_file(raw_bytes = None) -> str:
         }
         for idx, (lineno, source_segment) in enumerate(lines_with_numbers)
     ]
+    
+needs_to_sync = False
 
 @app.post("/api/upload")
 async def import_graph(file: UploadFile = File(...)):
+    global needs_to_sync
+    
     if watcher_process: # need to create a pointer in the db instead!
         watcher_process.kill()
     
@@ -254,11 +258,13 @@ async def import_graph(file: UploadFile = File(...)):
     
     # change how we set the pointer in the future! (code below)
     
+    needs_to_sync = True
+    
     ensure_watcher_running()
     
     return Response(status_code=201)
 
-@app.post("/api/restart_watcher")
+@app.post("/api/dev/restart_watcher")
 async def restart_watcher():
     try:
         watcher_process.kill()
@@ -283,21 +289,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 raise
 
     async def app_to_ws():
-        breaking = False
-        warns = set()
+        global needs_to_sync
         while True:
-            for message in ifc_read(_app_to_server, keep_json=True):
+            while queue:
+                await asyncio.sleep(.1)
+            
+            messages = ifc_read(_app_to_server, keep_json=True)
+            
+            if needs_to_sync:
+                needs_to_sync = False
+                while True:
+                    try:
+                        sync_event = json.dumps({
+                            "type": "sync",
+                            "data": await app_sync()
+                        })
+                        break
+                    except:
+                        await asyncio.sleep(.1)
+                messages.insert(0, sync_event)
+            
+            for i, message in enumerate(messages):
                 try:
                     await websocket.send_text(message)
                 except Exception as error:
-                    breaking = True
-                    queue.append(message)
-                    warns.add(error)
-
-            if breaking:
-                for warn in warns:
-                    print(f"[ddd] {warn}", flush=True)
-                raise
+                    queue.extend(messages[i:])
+                    print(f"[ddd] {error}", flush=True)
+                    raise
             
             await asyncio.sleep(.1)
             

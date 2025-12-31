@@ -21,8 +21,6 @@ export function ImportPanel({ setFileImported }: { setFileImported: (v: boolean)
 
       if (!response.ok) throw new Error('Failed to import file')
 
-      location.reload()
-
       setFileImported(true)
     } finally {
       setLoading(false)
