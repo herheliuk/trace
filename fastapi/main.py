@@ -13,59 +13,60 @@ import sqlite3
 
 DATABASE = Path.cwd() / 'trace.db'
 
-DATABASE.unlink(missing_ok=True)
+def create_tables():
+    with sqlite3.connect(DATABASE) as db_connection:
+        db_connection.executescript('''
+            CREATE TABLE IF NOT EXISTS files (
+                file TEXT NOT NULL,
+                
+                timeline_id INTEGER,    -- timeline pointer
+                line_number INTEGER,    -- node pointer
+                
+                PRIMARY KEY (file)
+            );
+            
+            CREATE TABLE IF NOT EXISTS state (
+                id INTEGER CHECK (id = 1),
+                
+                file TEXT,    -- file pointer
 
-with sqlite3.connect(DATABASE) as db_connection:
-    db_connection.executescript('''
-        CREATE TABLE IF NOT EXISTS files (
-            file TEXT NOT NULL,
-            
-            timeline_id INTEGER,    -- timeline pointer
-            line_number INTEGER,    -- node pointer
-            
-            PRIMARY KEY (file)
-        );
-        
-        CREATE TABLE IF NOT EXISTS state (
-            id INTEGER CHECK (id = 1),
-            
-            file TEXT,    -- file pointer
+                PRIMARY KEY (id)
+                
+                FOREIGN KEY (file)
+                    REFERENCES files(file)
+                    ON DELETE SET NULL
+            );
 
-            PRIMARY KEY (id)
-            
-            FOREIGN KEY (file)
-                REFERENCES files(file)
-                ON DELETE SET NULL
-        );
+            CREATE TABLE IF NOT EXISTS timeline (
+                file TEXT NOT NULL,
+                id INTEGER NOT NULL,
+                
+                event TEXT,
+                target TEXT,
+                return_value TEXT,
+                frame_id INTEGER,
+                function TEXT,
+                line_number INTEGER,
+                source_segment TEXT,
+                global_diff TEXT,   -- JSON
+                local_diff TEXT,    -- JSON
+                traceback TEXT,
+                error TEXT,
+                
+                -- +? time_taken REAL
 
-        CREATE TABLE IF NOT EXISTS timeline (
-            file TEXT NOT NULL,
-            id INTEGER NOT NULL,
-            
-            event TEXT,
-            target TEXT,
-            return_value TEXT,
-            frame_id INTEGER,
-            function TEXT,
-            line_number INTEGER,
-            source_segment TEXT,
-            global_diff TEXT,   -- JSON
-            local_diff TEXT,    -- JSON
-            traceback TEXT,
-            error TEXT,
-            
-            -- +? time_taken REAL
+                -- +? sha256 TEXT UNIQUE
+                -- +? last_sha256 TEXT
+                
+                PRIMARY KEY (file, id),
+                
+                FOREIGN KEY (file)
+                    REFERENCES files(file)
+                    ON DELETE CASCADE
+            )
+        ''')
 
-            -- +? sha256 TEXT UNIQUE
-            -- +? last_sha256 TEXT
-            
-            PRIMARY KEY (file, id),
-            
-            FOREIGN KEY (file)
-                REFERENCES files(file)
-                ON DELETE CASCADE
-        )
-    ''')
+create_tables()
 
 for name in (
     '_app_to_server',
@@ -165,7 +166,7 @@ async def app_sync() -> dict:
                 raise HTTPException(status_code=400, detail='no timeline for this timeline_id')
     
         return {
-            "nodes": nodes_from_file(),
+            "nodes": nodes_from_file(timeline_id=timeline_id),
             "node_id": node_id,
             "timeline": timeline,
             "timeline_id": timeline_id
@@ -184,7 +185,7 @@ def ensure_watcher_running():
 
 MAIN_FILE_PATH = Path.cwd() / "shared" / "main.py"
 
-def nodes_from_file(raw_bytes = None) -> str:
+def nodes_from_file(raw_bytes = None, timeline_id = None) -> str:
     if raw_bytes:
         text = raw_bytes.decode('utf-8')
     else:
@@ -195,39 +196,42 @@ def nodes_from_file(raw_bytes = None) -> str:
 
     line_number_frame_id = None
 
-    with sqlite3.connect(DATABASE) as db_connection:
-        cursor = db_connection.cursor()
-        
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        cursor.execute(
-            """
-            SELECT file
-            FROM state
-            WHERE id = 1
-            """
-        )
-        
-        if row := cursor.fetchone():
-            file, = row
+    if timeline_id:
+        with sqlite3.connect(DATABASE) as db_connection:
+            cursor = db_connection.cursor()
+            
+            cursor.execute("PRAGMA foreign_keys = ON;")
             
             cursor.execute(
                 """
-                SELECT line_number, frame_id
-                FROM timeline
-                WHERE file == :file
-                ORDER BY id ASC
-                """,
-                {
-                    "file": file
-                }
+                SELECT file
+                FROM state
+                WHERE id = 1
+                """
             )
+            
+            if row := cursor.fetchone():
+                file, = row
+                
+                cursor.execute(
+                    """
+                    SELECT line_number, frame_id
+                    FROM timeline
+                    WHERE id <= :id
+                    AND file == :file
+                    ORDER BY id ASC
+                    """,
+                    {
+                        "id": timeline_id,
+                        "file": file
+                    }
+                )
 
-            if rows := cursor.fetchall():
-                line_number_frame_id = {
-                    row[0]: row[1]
-                    for row in rows
-                }
+                if rows := cursor.fetchall():
+                    line_number_frame_id = {
+                        row[0]: row[1]
+                        for row in rows
+                    }
 
     return [
         {
@@ -248,7 +252,7 @@ needs_to_sync = False
 async def import_graph(file: UploadFile = File(...)):
     global needs_to_sync
     
-    if watcher_process: # need to create a pointer in the db instead!
+    if watcher_process: # use a pointer in the db instead!
         watcher_process.kill()
     
     raw_bytes = await file.read()
@@ -256,7 +260,11 @@ async def import_graph(file: UploadFile = File(...)):
     with open(str(MAIN_FILE_PATH), "wb") as file:
         file.write(raw_bytes)
     
-    # change how we set the pointer in the future! (code below)
+    # just reset the database for now
+    # in future set TABLE "state" to an imported file
+    # or move this ^ behavior to a file tree section
+    DATABASE.unlink(missing_ok=True)
+    create_tables()
     
     needs_to_sync = True
     
