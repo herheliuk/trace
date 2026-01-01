@@ -113,27 +113,23 @@ class StdErrRedirector:
 sys.stdout = StdOutRedirector()
 sys.stderr = StdErrRedirector()
 
-#def print_step(text):
-#    ifc_write(_app_to_server, json.dumps(text))
-
 def send_data(send_back):
-    if True:
-        criu.dump(allow_overwrite=True)
-        
-        for key, value in send_back.items():
-            try:
-                send_back[key] = json.dumps(value)
-            except:
-                send_back[key] = json.dumps(str(value))
-        
-        send_back['id'] = criu._last_dump_number
-        
-        db_save(send_back)
-        
-        ifc_write(_app_to_server, {
-            "type": "event",
-            "data": send_back
-        })
+    criu.dump(allow_overwrite=True)
+    
+    for key, value in send_back.items():
+        try:
+            send_back[key] = json.dumps(value)
+        except:
+            send_back[key] = json.dumps(str(value))
+    
+    send_back['id'] = criu._last_dump_number
+    
+    db_save(send_back)
+    
+    ifc_write(_app_to_server, {
+        "type": "event",
+        "data": send_back
+    })
     running = True
     while running:
         for message in ifc_read(_server_to_app):
@@ -168,105 +164,104 @@ def main(debug_script_path: Path):
         for path in paths_to_trace
     }
     
-    if True:
-        def trace_function(frame, event, arg):
-            str_code_filepath = frame.f_code.co_filename
-            if str_code_filepath not in str_paths_to_trace: return
+    def trace_function(frame, event, arg):
+        str_code_filepath = frame.f_code.co_filename
+        if str_code_filepath not in str_paths_to_trace: return
 
-            code_name = frame.f_code.co_name
-            filename = Path(str_code_filepath).name
+        code_name = frame.f_code.co_name
+        filename = Path(str_code_filepath).name
 
-            is_not_module = code_name != '<module>'
+        is_not_module = code_name != '<module>'
 
-            if is_not_module:
-                target = code_name
-                function_name = None if code_name.startswith('<') else code_name
-                current_locals = dict(frame.f_locals)
-            else:
-                target = filename
-                function_name = None
-                current_locals = {}
+        if is_not_module:
+            target = code_name
+            function_name = None if code_name.startswith('<') else code_name
+            current_locals = dict(frame.f_locals)
+        else:
+            target = filename
+            function_name = None
+            current_locals = {}
 
-            current_globals = dict(frame.f_globals)
+        current_globals = dict(frame.f_globals)
 
-            last_functions = last_files[str_code_filepath]
+        last_functions = last_files[str_code_filepath]
             
-            frame_id = id(frame)
+        frame_id = id(frame)
             
-            global_diff, local_diff = {}, {}
+        global_diff, local_diff = {}, {}
 
-            if event in ('line', 'return'):
-                old_globals, old_locals = last_functions[frame_id]
+        if event in ('line', 'return'):
+            old_globals, old_locals = last_functions[frame_id]
 
-                global_diff = diff_scope(old_globals, current_globals)
-                local_diff = diff_scope(old_locals, current_locals) if is_not_module else {}
+            global_diff = diff_scope(old_globals, current_globals)
+            local_diff = diff_scope(old_locals, current_locals) if is_not_module else {}
                 
-                #"global_diff": global_diff,
-                #"local_diff": local_diff,
+            #"global_diff": global_diff,
+            #"local_diff": local_diff,
             
-            source_segment = source_code_cache[str_code_filepath].get(frame.f_lineno, {}).get('segment', '')
+        source_segment = source_code_cache[str_code_filepath].get(frame.f_lineno, {}).get('segment', '')
             
-            data = {
-                'event': event,
-                'target': target,
-                'file': filename,
-                'frame_id': frame_id,
-                'function': function_name,
-                'line_number': frame.f_lineno,
-                'source_segment': source_segment,
-                "global_diff": global_diff,
-                "local_diff": local_diff,
-                "return_value": arg,
-                "traceback": None,
-                "error": None
-            }
-            
-            if event == 'line':
-                send_data(data)
-                last_functions[frame_id] = current_globals, current_locals
-                return
-
-            elif event == 'call':
-                send_data(data)
-                #if current_locals: print_step(pretty_scope(current_locals))
-                last_functions.setdefault(frame_id, (current_globals, current_locals))
-                return trace_function
-
-            elif event == 'return':
-                send_data(data)
-                # "return_value": arg
-                del last_functions[frame_id]
-                return
-
-            elif event == 'exception':
-                exc_type, exc_value, exc_traceback = arg
-                data.update({
-                    "traceback": ''.join(format_tb(exc_traceback)),
-                    "error": f"{exc_type.__name__}: {exc_value}"
-                })
-                send_data(data)
-                return
-        
-        source_code = debug_script_path.read_text()
-        
-        compiled = compile(
-            source_code,
-            filename=debug_script_path,
-            mode='exec',
-            dont_inherit=True
-        )
-        
-        exec_globals = {
-            '__name__': '__main__',
-            '__file__': str(debug_script_path)
+        data = {
+            'event': event,
+            'target': target,
+            'file': filename,
+            'frame_id': frame_id,
+            'function': function_name,
+            'line_number': frame.f_lineno,
+            'source_segment': source_segment,
+            "global_diff": global_diff,
+            "local_diff": local_diff,
+            "return_value": arg,
+            "traceback": None,
+            "error": None
         }
+            
+        if event == 'line':
+            send_data(data)
+            last_functions[frame_id] = current_globals, current_locals
+            return
+
+        elif event == 'call':
+            send_data(data)
+            #if current_locals: print_step(pretty_scope(current_locals))
+            last_functions.setdefault(frame_id, (current_globals, current_locals))
+            return trace_function
+
+        elif event == 'return':
+            send_data(data)
+            # "return_value": arg
+            del last_functions[frame_id]
+            return
+
+        elif event == 'exception':
+            exc_type, exc_value, exc_traceback = arg
+            data.update({
+                "traceback": ''.join(format_tb(exc_traceback)),
+                "error": f"{exc_type.__name__}: {exc_value}"
+            })
+            send_data(data)
+            return
         
-        with use_dir(debug_script_path.parent), use_trace(trace_function):
-            exec(
-                compiled,
-                exec_globals,
-                None
-            )
+    source_code = debug_script_path.read_text()
+        
+    compiled = compile(
+        source_code,
+        filename=debug_script_path,
+        mode='exec',
+        dont_inherit=True
+    )
+        
+    exec_globals = {
+        '__name__': '__main__',
+        '__file__': str(debug_script_path)
+    }
+        
+    with use_dir(debug_script_path.parent), use_trace(trace_function):
+        exec(
+            compiled,
+            exec_globals,
+            None
+        )
 
 if __name__ == '__main__':
     

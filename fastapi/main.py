@@ -272,14 +272,6 @@ async def import_graph(file: UploadFile = File(...)):
     
     return Response(status_code=201)
 
-@app.post("/api/dev/restart_watcher")
-async def restart_watcher():
-    try:
-        watcher_process.kill()
-        return Response(status_code=201)
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=str(error))
-
 queue = []
 
 @app.websocket("/api/ws")

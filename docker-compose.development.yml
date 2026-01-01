@@ -1,12 +1,4 @@
 services:
-  fastapi:
-    container_name: fastapi
-    build: ./fastapi/
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./fastapi/main.py:/app/main.py
   frontend:
     container_name: frontend
     restart: unless-stopped

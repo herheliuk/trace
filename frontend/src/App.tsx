@@ -12,6 +12,7 @@ import { useWebSocket } from "./useWebSocket";
 import { WebSocketPanel } from "./WebSocketPanel";
 import { server_uri } from './config';
 import { NodeContext } from './NodeContext';
+import { Background } from './ui/Background';
 
 export default function App() {
   const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
@@ -185,17 +186,7 @@ export default function App() {
 
   return (
     <div className="w-screen h-screen relative overflow-hidden flex flex-col">
-      <div
-        className="stage fixed inset-0 pointer-events-none"
-        style={{
-          filter:
-            "blur(var(--blur)) brightness(calc(1 + (var(--intensity,1) - 1) * 0.25))",
-        }}
-      >
-        <div className="blob b1"></div>
-        <div className="blob b2"></div>
-        <div className="blob b3"></div>
-      </div>
+      <Background />
 
       <div className="flex-1 w-full relative z-20">
         <NodeContext.Provider value={{ nodeIndex, setNodeIndex }}>
