@@ -18,7 +18,7 @@ from pathlib import Path
 from collections import defaultdict
 from traceback import format_tb
 
-from utils.internal_file_communication import ifc_read, ifc_write
+from utils.internal_file_communication import ifc
 
 import sqlite3
 
@@ -32,33 +32,23 @@ def db_save(send_back) -> None:
         
         cursor.execute(
             """
-            INSERT INTO files (file, timeline_id, line_number)
-            VALUES (:file, :id, :line_number)
-            ON CONFLICT(file) DO UPDATE SET
-                timeline_id = excluded.timeline_id,
-                line_number = excluded.line_number;
+            UPDATE files
+            SET timeline_id = :id,
+                line_number = :line_number
+            WHERE file = :file;
             """,
             send_back
         )
         
-        """ replace the code above with the code below, once we handle the files properly
-        UPDATE files
-        SET timeline_id = :id,
-            line_number = :line_number
-        WHERE file = :file;
-        """
         
-        cursor.execute( # may cause bugs, we probably need to set the pointer exclusively manually
-            """
-            INSERT OR REPLACE INTO state (
-                id, file
-            )
-            VALUES (
-                1, :file
-            )
-            """,
-            send_back
-        )
+        # sqlite3
+        # Programming Error
+        # Error binding parameter 10: type 'dict' is not supported
+        
+        for key, value in send_back.items():
+            if isinstance(value, (dict)):
+                send_back[key] = str(value)
+
 
         cursor.execute(
             """
@@ -86,26 +76,26 @@ for name in (
 
 class StdOutRedirector:
     def flush(self):
-        ifc_write(_app_to_server, {
+        ifc.append(_app_to_server, {
             "type": "flush",
             "data": "stdout"
         })
     
     def write(self, text):
-        ifc_write(_app_to_server, {
+        ifc.append(_app_to_server, {
             "type": "stdout",
             "data": text
         })
 
 class StdErrRedirector:
     def flush(self):
-        ifc_write(_app_to_server, {
+        ifc.append(_app_to_server, {
             "type": "flush",
             "data": "stderr"
         })
     
     def write(self, text):
-        ifc_write(_app_to_server, {
+        ifc.append(_app_to_server, {
             "type": "stderr",
             "data": text
         })
@@ -116,23 +106,17 @@ sys.stderr = StdErrRedirector()
 def send_data(send_back):
     criu.dump(allow_overwrite=True)
     
-    for key, value in send_back.items():
-        try:
-            send_back[key] = json.dumps(value)
-        except:
-            send_back[key] = json.dumps(str(value))
-    
     send_back['id'] = criu._last_dump_number
     
     db_save(send_back)
     
-    ifc_write(_app_to_server, {
+    ifc.append(_app_to_server, {
         "type": "event",
         "data": send_back
     })
     running = True
     while running:
-        for message in ifc_read(_server_to_app):
+        for message in ifc.pop(_server_to_app):
             match message['type']:
                 case 'continue':
                     running = False
@@ -140,12 +124,12 @@ def send_data(send_back):
                     try:
                         new_timeline_id = message['new_timeline_id']
                         int(new_timeline_id)
-                        ifc_write(_watcher, new_timeline_id)
+                        ifc.append(_watcher, new_timeline_id)
                         _exit(0)
                     except Exception as error:
                         print(error)
                 case 'new_node_index':
-                    ifc_write(_app_to_server, 'not supported action. {new_node_index}')
+                    ifc.append(_app_to_server, 'not supported action. {new_node_index}')
             
         sleep(.1)
     
@@ -262,25 +246,46 @@ def main(debug_script_path: Path):
             exec_globals,
             None
         )
-
+    
 if __name__ == '__main__':
     
-    info = ifc_read(_watcher)
+    info = ifc.read(_watcher)
     info = info[len(info) - 1] if info else None
     
-    starting = not info
+    starting = not info or not info.isdigit()
     
     child_pid = os_fork()
     if child_pid > 0:
         os_waitpid(child_pid, 0)
         while True:
 
-            info = info or ifc_read(_watcher)
+            info = ifc.pop(_watcher)
             info = info[len(info) - 1] if info else None
 
             try:
                 int(info)
             except:
+                # done executing a script.
+                
+                with sqlite3.connect(DATABASE) as db_connection:
+                    cursor = db_connection.cursor()
+                    
+                    cursor.execute("PRAGMA foreign_keys = ON;")
+                    
+                    cursor.execute(
+                        """
+                        UPDATE files
+                        SET timeline_id = :id,
+                            line_number = :line_number
+                        WHERE file = :file;
+                        """,
+                        {
+                            "id": None,
+                            "line_number": None,
+                            "file": "main.py" # ! REPLACE WITH THE ACTUAL UPLOADED FILENAME
+                        }
+                    )
+
                 exit()
 
             try:
@@ -291,8 +296,6 @@ if __name__ == '__main__':
             except Exception as e:
                 print(e)
                 exit()
-            
-            info = None
     
     if starting:
         criu.wipe()

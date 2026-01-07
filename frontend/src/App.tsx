@@ -1,3 +1,4 @@
+// App.tsx
 import {
   Controls,
   NodeChange,
@@ -142,14 +143,17 @@ export default function App() {
         break;
 
       case "stdout":
+        if (!(message.data.trim())) return;
         console.debug(message.data)
         break;
 
       case "stderr":
+        if (!(message.data.trim())) return;
         console.error(message.data)
         break;
 
       case "flush":
+        if (!(message.data.trim())) return;
         switch (message.data) {
           case "stdout":
             // Unsupported

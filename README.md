@@ -42,4 +42,5 @@ source env.sh
 sudo -E $(which uvicorn) main:app
 ```
 
-<img src="scr1.png" alt="App screenshot"/>
+<img src="screens/app.png" alt="App screenshot"/>
+<img src="screens/db.png" alt="SQL Database screenshot"/>

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from pathlib import Path
 
-from utils.internal_file_communication import ifc_read, ifc_write
+from utils.internal_file_communication import ifc
 
 import sqlite3
 
@@ -176,8 +176,50 @@ watcher_process = None
 
 def ensure_watcher_running():
     global watcher_process
+    
+    restart_needed = watcher_process is None or watcher_process.poll() is not None
 
-    if watcher_process is None or watcher_process.poll() is not None:
+    if restart_needed:
+        timeline_id, node_id = None, None
+        
+        with sqlite3.connect(DATABASE) as db_connection:
+            cursor = db_connection.cursor()
+            
+            cursor.execute("PRAGMA foreign_keys = ON;")
+            
+            cursor.execute(
+                """
+                SELECT file
+                FROM state
+                WHERE id = 1
+                """
+            )
+            
+            if row := cursor.fetchone():
+                file, = row
+            
+                cursor.execute(
+                    """
+                    SELECT timeline_id, line_number
+                    FROM files
+                    WHERE file = :file
+                    """,
+                    {
+                        "file": file
+                    }
+                )
+                
+                if row := cursor.fetchone():
+                    timeline_id, node_id = row
+                    
+                try:
+                    if not type(timeline_id) is int:
+                        raise ValueError("There's no timeline_id or it isn't an int")
+                    ifc.replace(_watcher, [str(timeline_id)])
+                    print(f"[REC {timeline_id} line {node_id}]", flush=True)
+                except Exception as error:
+                    pass#print(f"[bbb] {error}", flush=True)
+        
         watcher_process = subprocess.Popen(
             ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
         )
@@ -260,15 +302,36 @@ async def import_graph(file: UploadFile = File(...)):
     with open(str(MAIN_FILE_PATH), "wb") as file:
         file.write(raw_bytes)
     
-    # just reset the database for now
-    # in future set TABLE "state" to an imported file
-    # or move this ^ behavior to a file tree section
-    DATABASE.unlink(missing_ok=True)
-    create_tables()
+    send_back = {
+        "file": "main.py" # ! REPLACE WITH THE ACTUAL UPLOADED FILENAME
+    }
+        
+    with sqlite3.connect(DATABASE) as db_connection:
+        cursor = db_connection.cursor()
+        
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO files (file)
+            VALUES (:file)
+            """,
+            send_back
+        )
+        
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO state (
+                id, file
+            )
+            VALUES (
+                1, :file
+            )
+            """,
+            send_back
+        )
     
     needs_to_sync = True
-    
-    ensure_watcher_running()
     
     return Response(status_code=201)
 
@@ -282,7 +345,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
-                ifc_write(_server_to_app, data, is_json=True)
+                ifc.append(_server_to_app, data, is_json=True)
                 ensure_watcher_running()
             except Exception as error:
                 print(f"[ccc] {error}", flush=True)
@@ -294,7 +357,7 @@ async def websocket_endpoint(websocket: WebSocket):
             while queue:
                 await asyncio.sleep(.1)
             
-            messages = ifc_read(_app_to_server, keep_json=True)
+            messages = ifc.pop(_app_to_server, keep_json=True)
             
             if needs_to_sync:
                 needs_to_sync = False
