@@ -1,259 +1,210 @@
-// App.tsx
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
+  ReactFlow,
+  applyNodeChanges,
   Controls,
   NodeChange,
-  ReactFlow,
-  applyNodeChanges
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+
 import { ImportPanel } from './ImportPanel';
-import CodeNode from './CodeNode';
-import { useWebSocket } from "./useWebSocket";
-import { WebSocketPanel } from "./WebSocketPanel";
-import { server_uri } from './config';
+import { WebSocketPanel } from './WebSocketPanel';
+import { CodeNode } from './CodeNode';
 import { NodeContext } from './NodeContext';
 import { Background } from './ui/Background';
+import { useWebSocket } from './useWebSocket';
+import { server_uri } from './config';
 
-export default function App() {
-  const nodeTypes = useMemo(() => ({ code: CodeNode }), []);
+// Helper: update node code and shift below nodes
+function updateNodeCode(nodes, nodeId, newCode) {
+  const idx = nodes.findIndex((n) => n.id === nodeId);
+  if (idx === -1) return nodes;
 
-  const [waitingForResponse, setWaitingForResponse] = useState(false);
+  const node = nodes[idx];
+  const oldLines = node.data.source_segment.split('\n').length;
+  const newLines = newCode.split('\n').length;
+  const deltaY = (newLines - oldLines) * 18; // LINE_HEIGHT
 
-  const timelineRef = useRef<HTMLDivElement>(null);
-  const timelineRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  const [fileImported, setFileImported] = useState(true);
-
-  const [nodes, setNodes] = useState<any[]>([]);
-  const [nodeIndex, setNodeIndex] = useState<string | null>(null);
-
-  const [timelineEntries, setTimelineEntries] = useState<any[]>([]);
-  const [timelineIndex, setTimelineIndex] = useState<number | null>(null);
-
-  const scrollToTimelineItem = (idx: number) => {
-    const item = timelineRefs.current[idx];
-    if (item) {
-      item.scrollIntoView({
-        behavior: 'smooth',
-        inline: 'center',
-        block: 'nearest',
-      });
-    }
+  const updatedNode = {
+    ...node,
+    data: { ...node.data, source_segment: newCode },
   };
 
-  useEffect(() => {
-    if (timelineIndex !== null) {
-      scrollToTimelineItem(timelineIndex);
+  return nodes.map((n, i) => {
+    if (i === idx) return updatedNode;
+    if (n.position.y > node.position.y) {
+      return { ...n, position: { ...n.position, y: n.position.y + deltaY } };
     }
-  }, [timelineIndex]);
+    return n;
+  });
+}
 
-  const handleSync = async (data) => {
+export default function App() {
+  // ================= STATES =================
+  const [nodes, setNodes] = useState([]);
+  const [nodeIndex, setNodeIndex] = useState<string | null>(null);
+  const [timelineEntries, setTimelineEntries] = useState([]);
+  const [timelineIndex, setTimelineIndex] = useState<number | null>(null);
+  const [fileImported, setFileImported] = useState(true);
+  const [waitingForResponse, setWaitingForResponse] = useState(false);
+
+  const timelineRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // ================= NODE TYPES =================
+  const nodeTypes = useMemo(
+    () => ({
+      code: (props) => (
+        <CodeNode
+          {...props}
+          data={{
+            ...props.data,
+            onChange: (newCode: string) => {
+              setNodes((prev) => updateNodeCode(prev, props.id, newCode));
+            },
+          }}
+        />
+      ),
+    }),
+    []
+  );
+
+  // ================= SYNC FUNCTIONS =================
+  const handleSync = (data) => {
     setNodes(data.nodes);
-    setNodeIndex(data.node_id?.toString());
-    setTimelineEntries(data.timeline);
-    setTimelineIndex(data.timeline_id);
+    setNodeIndex(data.node_id?.toString() || null);
+    setTimelineEntries(data.timeline || []);
+    setTimelineIndex(data.timeline_id || null);
   };
 
   const syncFromServer = async () => {
     const res = await fetch(`http${server_uri}/api/sync`);
     const data = await res.json();
-
     handleSync(data);
   };
 
-  let didSync = false;
   useEffect(() => {
-    if (!didSync) {
-      syncFromServer();
-      didSync = true;
-    }
+    syncFromServer();
   }, []);
 
-  const handleEvent = async (data) => {
-    setTimelineEntries(prev => {
-      const existing = prev[data.id];
-
-      if (!existing) {
-        const next = prev.slice();
-        next[data.id] = data;
-        return next;
-      } else {
-        if (JSON.stringify(prev[data.id]) === JSON.stringify(data)) return prev;
-        const next = prev.slice(0, data.id);
-        next[data.id] = data;
-        return next;
-      }
+  // ================= WEBSOCKET =================
+  const handleEvent = (data) => {
+    setTimelineEntries((prev) => {
+      const next = [...prev];
+      next[data.id] = data;
+      return next;
     });
 
-    const nodeId = String(data.line_number);
-
-    setNodes(prev => {
-      const idx = prev.findIndex(node => node.id === nodeId);
+    setNodes((prev) => {
+      const idx = prev.findIndex((n) => n.id === String(data.line_number));
       if (idx < 0) return prev;
-
       const node = prev[idx];
-
       return [
         ...prev.slice(0, idx),
-        {
-          ...node,
-          data: {
-            ...node.data,
-            framePointer: data.frame_id,
-          },
-        },
+        { ...node, data: { ...node.data, framePointer: data.frame_id } },
         ...prev.slice(idx + 1),
       ];
     });
 
-    /*
-    const reactFlow = useReactFlow();
-
-    const node = reactFlow.getNode(nodeId);
-
-    const { x, y } = node.position;
-
-    const width = node.width ?? 0;
-    const height = node.height ?? 0;
-
-    reactFlow.setCenter(x + width / 2, y + height / 2, {
-      duration: 400,
-      zoom: reactFlow.getZoom(),
-    });
-    */
-
     setTimelineIndex(data.id ?? null);
-    setNodeIndex(data.line_number.toString() ?? null);
-  }
+    setNodeIndex(data.line_number?.toString() ?? null);
+  };
 
   const messageReceived = (jsonString) => {
     if (!jsonString) return;
     setWaitingForResponse(false);
-
     const message = JSON.parse(jsonString);
 
     switch (message.type) {
-      case "event":
-        handleEvent(message.data)
+      case 'event':
+        handleEvent(message.data);
         break;
-
-      case "sync":
-        handleSync(message.data)
+      case 'sync':
+        handleSync(message.data);
         break;
-
-      case "stdout":
-        if (!(message.data.trim())) return;
-        console.debug(message.data)
+      case 'stdout':
+      case 'stderr':
+        if (message.data.trim()) console[message.type === 'stderr' ? 'error' : 'debug'](message.data);
         break;
-
-      case "stderr":
-        if (!(message.data.trim())) return;
-        console.error(message.data)
-        break;
-
-      case "flush":
-        if (!(message.data.trim())) return;
-        switch (message.data) {
-          case "stdout":
-            // Unsupported
-            break;
-
-          case "stderr":
-            // Unsupported
-            break;
-        }
-        break;
-
       default:
-        console.warn("WS: Unknown message.type:", message.type);
+        console.warn('WS: Unknown message.type:', message.type);
     }
-  }
+  };
 
-  const { isConnected, send } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
+  const { send } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
 
+  // ================= REACT FLOW =================
   const onNodesChange = useCallback(
     (changes: NodeChange<any>[]) => setNodes((snapshot) => applyNodeChanges(changes, snapshot)),
     []
   );
 
+  // ================= TIMELINE =================
+  const scrollToTimelineItem = (idx: number) => {
+    const item = timelineRefs.current[idx];
+    if (item) item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  };
+
+  useEffect(() => {
+    if (timelineIndex !== null) scrollToTimelineItem(timelineIndex);
+  }, [timelineIndex]);
+
   const handleTimelineClick = useCallback((index: number) => {
     send(JSON.stringify({ type: 'new_timeline_id', new_timeline_id: index }));
   }, [send]);
 
-  const onNodeClick = useCallback(
-    (node: any) => {
-      send(JSON.stringify({ type: 'new_node_index', new_node_index: node.data.index }));
-    },
-    [send]
-  );
-
   return (
-    <div className="w-screen h-screen relative overflow-hidden flex flex-col">
+    <div className="w-screen h-screen flex flex-col relative overflow-hidden">
       <Background />
 
-      <div className="flex-1 w-full relative z-20">
-        <NodeContext.Provider value={{ nodeIndex, setNodeIndex }}>
+      <NodeContext.Provider value={{ nodeIndex, setNodeIndex }}>
+        <div className="flex-1 relative z-20 w-full">
           <ReactFlow
             nodes={nodes}
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
-            onNodeClick={onNodeClick}
             fitView
-            panOnScroll
+            panOnScroll={true}
+            zoomOnScroll={false}
             proOptions={{ hideAttribution: true }}
             minZoom={0.01}
             maxZoom={1000}
             panOnScrollSpeed={1}
             className="w-full h-full bg-transparent"
           >
-
             <ImportPanel setFileImported={setFileImported} />
-
             <WebSocketPanel
               send={send}
               show={fileImported}
               waiting={waitingForResponse}
               setWaiting={setWaitingForResponse}
             />
-
             <Controls />
           </ReactFlow>
-        </NodeContext.Provider>
-      </div>
+        </div>
 
-      <div
-        ref={timelineRef}
-        className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]"
-      >
-        {timelineEntries?.map((record, idx) => {
-          const isSelected = timelineIndex === idx;
+        <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
+          {timelineEntries.map((record, idx) => {
+            const isSelected = timelineIndex === idx;
+            const label = record?.event?.includes('line')
+              ? record.line_number
+              : record?.event?.replace(/^"+|"+$/g, '')?.charAt(0)?.toUpperCase();
 
-          const label =
-            record?.event?.includes('line') ?
-              record.line_number :
-              record?.event?.replace(/^"+|"+$/g, '').charAt(0).toUpperCase();
-
-          return (
-            <div
-              key={idx}
-              ref={(el) => (timelineRefs.current[idx] = el)}
-              onClick={() => handleTimelineClick(idx)}
-              className={`flex flex-col items-center flex-none w-8 mx-1 cursor-pointer transition-all duration-300
-                ${isSelected
-                  ? 'bg-yellow-400 border-yellow-600'
-                  : 'bg-gray-400/50 border-gray-600'
-                }
-                rounded-full border-2 h-8`}
-              title={`Timeline index: ${idx}, Line: ${record.line_number}`}
-            >
-              <span className="text-xs text-white mt-1 font-bold">
-                {label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+            return (
+              <div
+                key={idx}
+                ref={(el) => (timelineRefs.current[idx] = el)}
+                onClick={() => handleTimelineClick(idx)}
+                className={`flex flex-col items-center flex-none w-8 mx-1 cursor-pointer transition-all duration-300
+                  ${isSelected ? 'bg-yellow-400 border-yellow-600' : 'bg-gray-400/50 border-gray-600'}
+                  rounded-full border-2 h-8`}
+                title={`Timeline index: ${idx}, Line: ${record.line_number}`}
+              >
+                <span className="text-xs text-white mt-1 font-bold">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </NodeContext.Provider>
     </div>
   );
 }

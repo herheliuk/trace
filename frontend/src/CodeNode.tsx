@@ -1,85 +1,56 @@
-//CodeNode.tsx
-import { useRef, useEffect, useState, useContext } from 'react';
-//import { Handle, Position } from '@xyflow/react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark as mainTheme, oneLight as highlightTheme } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { NodeContext } from "./NodeContext";
+import React, { useState, useEffect, useContext } from 'react';
+import Editor from 'react-simple-code-editor';
+import { highlight, languages } from 'prismjs/components/prism-core';
+import 'prismjs/components/prism-python';
+import { NodeContext } from './NodeContext';
+import 'prismjs/themes/prism-tomorrow.css';
 
-interface CodeNodeProps {
-  id: string;
-  data: {
-    source_segment: string;
-    framePointer?: string | null;
-  };
-}
+export function CodeNode({ id, data }: any) {
+  const { nodeIndex } = useContext(NodeContext);
+  const [code, setCode] = useState(data.source_segment);
 
-export default function CodeNode({ id, data }: CodeNodeProps) {
-  const labelRef = useRef<HTMLDivElement>(null);
-  const [labelWidth, setLabelWidth] = useState(0);
-
-  const { nodeIndex, setNodeIndex } = useContext(NodeContext);
-
-  useEffect(() => {
-    if (labelRef.current) {
-      setLabelWidth(labelRef.current.offsetWidth);
-    }
-  }, [id, data.framePointer]);
+  useEffect(() => setCode(data.source_segment), [data.source_segment]);
 
   const highlighted = id === nodeIndex;
 
+  const handleChange = (newCode) => {
+    setCode(newCode);
+    data.onChange?.(newCode);
+  };
+
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      <div
-        ref={labelRef}
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: -(labelWidth + 8),
-          transform: 'translateY(-50%)',
-          color: highlighted ? '#ffff00' : '#ffffff',
-          fontSize: 12,
-          fontFamily: 'monospace',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-          display: 'flex',
-          gap: 6,
-          alignItems: 'center',
-          pointerEvents: 'none',
-          userSelect: 'none',
-        }}
-      >
-        {data.framePointer && (
-          <span style={{ opacity: 0.8 }}>
-            {data.framePointer}
-          </span>
-        )}
-        <span>{id}</span>
-      </div>
-
-      <div
-        style={{
-          background: highlighted ? '#FAFAFA' : '#292C33',
-          borderRadius: 6,
-          padding: 8,
-          width: 'fit-content',
-        }}
-      >
-        <SyntaxHighlighter
-          language="python"
-          style={highlighted ? highlightTheme : mainTheme}
-          wrapLines={true}
-          showLineNumbers={false}
-          customStyle={{
-            margin: 0,
-            padding: 0,
-            background: 'transparent',
+      {data.framePointer && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '100%',
+            top: 6,
+            marginRight: 8,
+            whiteSpace: 'nowrap',
+            fontFamily: 'monospace',
             fontSize: 12,
-            lineHeight: '18px',
+            color: highlighted ? '#ffff00' : '#ffffff',
+            pointerEvents: 'none',
           }}
         >
-          {data.source_segment}
-        </SyntaxHighlighter>
-      </div>
+          {data.framePointer} · {id}
+        </div>
+      )}
+      <Editor
+        value={code}
+        onValueChange={handleChange}
+        highlight={(code) => highlight(code, languages.python, 'python')}
+        padding={10}
+        style={{
+          fontFamily: '"Fira Code", monospace',
+          fontSize: 12,
+          borderRadius: 6,
+          background: highlighted ? '#FAFAFA' : '#292C33',
+          color: highlighted ? '#000' : '#FFF',
+          lineHeight: 1.4,
+        }}
+      />
     </div>
   );
 }

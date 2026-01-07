@@ -12,8 +12,10 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.17",
     "@xyflow/react": "^12.9.2",
+    "prismjs": "^1.30.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-simple-code-editor": "^0.14.1",
     "react-syntax-highlighter": "^16.1.0",
     "tailwindcss": "^4.1.17"
   },

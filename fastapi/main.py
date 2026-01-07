@@ -275,11 +275,13 @@ def nodes_from_file(raw_bytes = None, timeline_id = None) -> str:
                         for row in rows
                     }
 
+    gap_between_nodes = 50
+
     return [
         {
             "id": str(lineno),
             "type": "code",
-            "position": {"x": (len(source_segment) - len(source_segment.lstrip())) / 4 * 25, "y": idx * 40},
+            "position": {"x": (len(source_segment) - len(source_segment.lstrip())) / 4 * 25, "y": idx * gap_between_nodes},
             "data": {
                 "source_segment": source_segment.lstrip(),
                 "framePointer": line_number_frame_id[lineno] if line_number_frame_id and lineno in line_number_frame_id else None

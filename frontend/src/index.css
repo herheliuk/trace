@@ -5,9 +5,9 @@ body {
 }
 
 :root {
-    --h: 140;
-    --s: 24%;
-    --l: 30%;
+    --h: 0;        /* hue doesn't matter when saturation is 0 */
+    --s: 0%;
+    --l: 12%;
     --intensity: 1;
     --speed: 1;
     --scale: 1;
