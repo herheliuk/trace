@@ -127,6 +127,16 @@ export default function App() {
       case 'stderr':
         if (message.data.trim()) console[message.type === 'stderr' ? 'error' : 'debug'](message.data);
         break;
+      case 'flush':
+        switch (message.data) {
+          case 'stdout':
+          case 'stderr':
+            // ...
+            break;
+          default:
+            console.warn('WS: Unknown flush data:', message.data);
+        }
+        break;
       default:
         console.warn('WS: Unknown message.type:', message.type);
     }
