@@ -40,6 +40,8 @@ function updateNodeCode(nodes, nodeId, newCode) {
 }
 
 export default function App() {
+  const inputMethod = ['touch', 'mouse'][0];
+
   // ================= STATES =================
   const [nodes, setNodes] = useState([]);
   const [nodeIndex, setNodeIndex] = useState<string | null>(null);
@@ -163,8 +165,8 @@ export default function App() {
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             fitView
-            panOnScroll={true}
-            zoomOnScroll={false}
+            panOnScroll={inputMethod === 'touch'}
+            zoomOnScroll={inputMethod === 'mouse'}
             proOptions={{ hideAttribution: true }}
             minZoom={0.01}
             maxZoom={1000}
