@@ -46,7 +46,7 @@ def db_save(send_back) -> None:
         # Error binding parameter 10: type 'dict' is not supported
         
         for key, value in send_back.items():
-            if isinstance(value, (dict)):
+            if isinstance(value, (dict, tuple)):
                 send_back[key] = str(value)
 
 
