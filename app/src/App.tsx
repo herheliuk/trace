@@ -215,6 +215,7 @@ export default function App() {
               setNodes((prev) => updateNodeCode(prev, props.id, newCode));
             },
           }}
+          send={send}
         />
       ),
     }),

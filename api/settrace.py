@@ -24,6 +24,16 @@ import sqlite3
 
 DATABASE = Path.cwd() / 'trace.db'
 
+def serialize(obj):
+    if isinstance(obj, (int, float, str, bool, type(None))):
+        return obj
+    elif isinstance(obj, (tuple, list)):
+        return [serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {str(k): serialize(v) for k, v in obj.items()}
+    else:
+        return str(obj)
+
 def db_save(send_back) -> None:
     with sqlite3.connect(DATABASE) as db_connection:
         cursor = db_connection.cursor()
@@ -39,16 +49,6 @@ def db_save(send_back) -> None:
             """,
             send_back
         )
-        
-        def serialize(obj):
-            if isinstance(obj, (int, float, str, bool, type(None))):
-                return obj
-            elif isinstance(obj, (tuple, list)):
-                return [serialize(item) for item in obj]
-            elif isinstance(obj, dict):
-                return {str(k): serialize(v) for k, v in obj.items()}
-            else:
-                return str(obj)
 
         send_back['global_diff'] = json.dumps(serialize(send_back['global_diff']))
         send_back['local_diff'] = json.dumps(serialize(send_back['local_diff']))
@@ -111,7 +111,7 @@ class StdErrRedirector:
 sys.stdout = StdOutRedirector()
 sys.stderr = StdErrRedirector()
 
-def send_data(send_back):
+def send_data(send_back, frame):
     criu.dump(allow_overwrite=True)
     
     send_back['id'] = criu._last_dump_number
@@ -136,8 +136,14 @@ def send_data(send_back):
                         _exit(0)
                     except Exception as error:
                         print(error)
-                case 'new_node_index':
-                    ifc.append(_app_to_server, 'not supported action. {new_node_index}')
+                case 'update_node_code':
+                    ifc.append(_app_to_server, serialize(frame))
+                case "stdin":
+                    # TODO
+                    ifc.append(_app_to_server, {
+                        "type": "stderr",
+                        "data": f"!{message['data']}"
+                    })
             
         sleep(.1)
     
@@ -210,18 +216,18 @@ def main(debug_script_path: Path):
         }
             
         if event == 'line':
-            send_data(data)
+            send_data(data, frame)
             last_scope[frame_id] = current_globals, current_locals
             return
 
         elif event == 'call':
-            send_data(data)
+            send_data(data, frame)
             #if current_locals: print(pretty_scope(current_locals))
             last_scope.setdefault(frame_id, (current_globals, current_locals))
             return trace_function
 
         elif event == 'return':
-            send_data(data)
+            send_data(data, frame)
             del last_scope[frame_id]
             return
 
@@ -231,7 +237,7 @@ def main(debug_script_path: Path):
                 "traceback": ''.join(format_tb(exc_traceback)),
                 "error": f"{exc_type.__name__}: {exc_value}"
             })
-            send_data(data)
+            send_data(data, frame)
             return
         
     source_code = debug_script_path.read_text()

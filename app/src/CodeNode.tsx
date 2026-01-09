@@ -5,7 +5,7 @@ import 'prismjs/components/prism-python';
 import { NodeContext } from './NodeContext';
 import 'prismjs/themes/prism-tomorrow.css';
 
-export function CodeNode({ id, data }: any) {
+export function CodeNode({ id, data, send }: any) {
   const { nodeIndex } = useContext(NodeContext);
   const [code, setCode] = useState(data.source_segment);
 
@@ -13,9 +13,17 @@ export function CodeNode({ id, data }: any) {
 
   const highlighted = id === nodeIndex;
 
-  const handleChange = (newCode) => {
+  const handleChange = (newCode: string) => {
     setCode(newCode);
     data.onChange?.(newCode);
+  };
+
+  const handleBlur = () => {
+    send?.({
+      type: 'update_node_code',
+      lineno: id,
+      code_segment: code,
+    });
   };
 
   return (
@@ -40,6 +48,7 @@ export function CodeNode({ id, data }: any) {
       <Editor
         value={code}
         onValueChange={handleChange}
+        onBlur={handleBlur}
         highlight={(code) => highlight(code, languages.python, 'python')}
         padding={10}
         style={{

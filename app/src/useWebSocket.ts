@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useCallback } from "react";
 
 export function useWebSocket(url: string, messageReceived) {
   const ws = useRef<WebSocket | null>(null);
@@ -48,13 +48,13 @@ export function useWebSocket(url: string, messageReceived) {
     xxx = false
   }, [url]);
 
-  const send = (data: any) => {
+  const send = useCallback((data: any) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(typeof data === "string" ? data : JSON.stringify(data));
     } else {
       console.warn("WS not connected. Message not sent:", data);
     }
-  };
+  })
 
   return { isConnected, send };
 }
