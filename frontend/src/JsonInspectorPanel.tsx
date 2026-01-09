@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+// JsonInspectorPanel.tsx
+
+import React, { useState, useRef, useLayoutEffect, useCallback } from 'react';
 import { Rnd } from 'react-rnd';
 import { useDebuggerState } from './DebuggerStateContext';
 
@@ -14,6 +16,7 @@ interface JsonInspectorPanelProps {
     nodeIndex: string | null;
     timelineIndex: number | null;
     terminal: TerminalEntry[];
+    clearTerminal: () => void;
 }
 
 export function JsonInspectorPanel({
@@ -22,6 +25,7 @@ export function JsonInspectorPanel({
     nodeIndex,
     timelineIndex,
     terminal,
+    clearTerminal,
 }: JsonInspectorPanelProps) {
     const [visible, setVisible] = useState(false);
     const [activeTab, setActiveTab] =
@@ -35,6 +39,30 @@ export function JsonInspectorPanel({
         width: 440,
         height: 340,
     });
+
+    useLayoutEffect(() => {
+        const el = terminalRef.current;
+        if (!el) return;
+
+        if (!wasAtBottomRef.current) return;
+
+        // wait for DOM + layout + wrapping
+        requestAnimationFrame(() => {
+            el.scrollTop = el.scrollHeight;
+        });
+    }, [terminal]);
+
+        const handleScroll = useCallback(() => {
+        const el = terminalRef.current;
+        if (!el) return;
+
+        const threshold = 24; // px tolerance
+        wasAtBottomRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    }, []);
+
+    const terminalRef = useRef<HTMLDivElement | null>(null);
+    const wasAtBottomRef = useRef(true);
 
     if (!visible) {
         return (
@@ -76,14 +104,23 @@ export function JsonInspectorPanel({
                                     key={tab}
                                     onClick={() => setActiveTab(tab as any)}
                                     className={`px-2 py-1 rounded ${activeTab === tab
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-gray-700'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-700'
                                         }`}
                                 >
                                     {tab}
                                 </button>
                             ))}
                         </div>
+
+                        {activeTab === 'terminal' && (
+                            <button
+                                onClick={clearTerminal}
+                                className="px-2 py-1 rounded bg-red-600 text-white text-xs"
+                            >
+                                Clear
+                            </button>
+                        )}
 
                         <button
                             onClick={() => setVisible(false)}
@@ -108,7 +145,11 @@ export function JsonInspectorPanel({
                 </div>
 
                 {/* ───────── Content ───────── */}
-                <div className="flex-1 overflow-auto p-2 text-xs font-mono bg-black/60 whitespace-pre-wrap">
+                <div
+                    ref={terminalRef}
+                    onScroll={handleScroll}
+                    className={`flex-1 overflow-auto p-2 text-xs font-mono bg-black/60 whitespace-pre-wrap`}
+                >
                     {activeTab === 'terminal' ? (
                         terminal.length === 0 ? (
                             <div className="text-gray-500">No output yet.</div>
@@ -126,7 +167,7 @@ export function JsonInspectorPanel({
                                 return (
                                     <pre
                                         key={i}
-                                        className={`${colorClass} whitespace-pre-wrap`}
+                                        className={colorClass}
                                     >
                                         {entry.text}
                                     </pre>

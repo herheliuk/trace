@@ -228,6 +228,10 @@ export default function App() {
       syncFromServer();
   }, [isConnected]);
 
+  const clearTerminal = useCallback(() => {
+    setTerminalEntries([]);
+  }, []);
+
   // ================= WEBSOCKET =================
   const handleEvent = (data) => {
     setTimelineEntries((prev) => {
@@ -307,6 +311,7 @@ export default function App() {
               nodeIndex={nodeIndex}
               timelineIndex={timelineIndex}
               terminal={terminalEntries}
+              clearTerminal={clearTerminal}
             />
           </div>
 
