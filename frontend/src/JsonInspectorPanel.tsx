@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface JsonInspectorPanelProps {
   nodes: any[];
@@ -7,6 +7,67 @@ interface JsonInspectorPanelProps {
   timelineIndex: number | null;
 }
 
+/* ---------- helpers ---------- */
+
+function parsePythonDict(str: string) {
+  if (!str || str === '{}') return {};
+  try {
+    return JSON.parse(str.replace(/'/g, '"'));
+  } catch {
+    return {};
+  }
+}
+
+function applyDiff(target: Record<string, any>, diffStr: string) {
+  const diff = parsePythonDict(diffStr);
+
+  for (const key of Object.keys(diff)) {
+    if (diff[key] === '<deleted>') {
+      delete target[key];
+    } else {
+      target[key] = diff[key];
+    }
+  }
+}
+
+
+function buildCurrentScope(timeline: any[], timelineIndex: number | null) {
+  if (timelineIndex == null || timelineIndex < 0) return null;
+
+  const scope: any = {
+    event: null,
+    file: null,
+    function: null,
+    frame_id: null,
+    line_number: null,
+    globals: {},
+    locals: {},
+    return_value: null,
+    error: null,
+  };
+
+  for (let i = 0; i <= timelineIndex && i < timeline.length; i++) {
+    const e = timeline[i];
+    if (!e) continue;
+
+    scope.event = e.event;
+    scope.file = e.file;
+    scope.function = e.function;
+    scope.frame_id = e.frame_id;
+    scope.line_number = e.line_number;
+
+    applyDiff(scope.globals, e.global_diff);
+    applyDiff(scope.locals, e.local_diff);
+
+    if (e.return_value != null) scope.return_value = e.return_value;
+    if (e.error != null) scope.error = e.error;
+  }
+
+  return scope;
+}
+
+/* ---------- component ---------- */
+
 export function JsonInspectorPanel({
   nodes,
   timeline,
@@ -14,7 +75,13 @@ export function JsonInspectorPanel({
   timelineIndex,
 }: JsonInspectorPanelProps) {
   const [visible, setVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'timeline'>('nodes');
+  const [activeTab, setActiveTab] =
+    useState<'state' | 'timeline' | 'nodes'>('state');
+
+  const scope = useMemo(
+    () => buildCurrentScope(timeline, timelineIndex),
+    [timeline, timelineIndex]
+  );
 
   if (!visible) {
     return (
@@ -34,14 +101,14 @@ export function JsonInspectorPanel({
         <div className="flex items-center justify-between">
           <div className="flex space-x-2">
             <button
-              onClick={() => setActiveTab('nodes')}
+              onClick={() => setActiveTab('state')}
               className={`px-2 py-1 rounded ${
-                activeTab === 'nodes'
+                activeTab === 'state'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700'
               }`}
             >
-              Nodes
+              State
             </button>
             <button
               onClick={() => setActiveTab('timeline')}
@@ -52,6 +119,16 @@ export function JsonInspectorPanel({
               }`}
             >
               Timeline
+            </button>
+            <button
+              onClick={() => setActiveTab('nodes')}
+              className={`px-2 py-1 rounded ${
+                activeTab === 'nodes'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700'
+              }`}
+            >
+              Nodes
             </button>
           </div>
 
@@ -80,10 +157,14 @@ export function JsonInspectorPanel({
         </div>
       </div>
 
-      {/* JSON Viewer */}
+      {/* Content */}
       <pre className="flex-1 overflow-auto p-2 text-xs text-green-300 bg-black/40">
         {JSON.stringify(
-          activeTab === 'nodes' ? nodes : timeline,
+          activeTab === 'nodes'
+            ? nodes
+            : activeTab === 'timeline'
+            ? timeline
+            : scope,
           null,
           2
         )}
