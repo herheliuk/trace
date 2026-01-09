@@ -2,7 +2,7 @@ install
 
 ```
 # pwd ./trace/
-cd ./fastapi/
+cd ./api/
 source env.sh
 git clone https://github.com/herheliuk/criu-python-api ./criu-python-api/ --depth 1
 source ./criu-python-api/install.sh
@@ -33,14 +33,14 @@ run
 
 ```
 # pwd ./trace/
-docker compose -f docker-compose.development.yml up frontend -d
+docker compose up frontend -d
 ```
 
 ```
-# pwd ./fastapi/
+# pwd ./api/
 source env.sh
 sudo -E $(which uvicorn) main:app
 ```
 
-<img src="screens/app.png" alt="App screenshot"/>
-<img src="screens/db.png" alt="SQL Database screenshot"/>
+<img src="images/app.png" alt="App screenshot"/>
+<img src="images/db.png" alt="SQL Database screenshot"/>

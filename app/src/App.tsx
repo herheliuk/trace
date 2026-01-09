@@ -319,7 +319,7 @@ export default function App() {
             {timelineEntries.map((record, idx) => {
               const isSelected = timelineIndex === idx;
               const label = record?.event?.includes('line')
-                ? record.line_number
+                ? record?.line_number
                 : record?.event?.replace(/^"+|"+$/g, '')?.charAt(0)?.toUpperCase();
 
               return (

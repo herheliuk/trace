@@ -221,7 +221,7 @@ def ensure_watcher_running():
                     pass#print(f"[bbb] {error}", flush=True)
         
         watcher_process = subprocess.Popen(
-            ["sudo", "-E", "/home/user/trace/fastapi/env/bin/python", "settrace.py"]
+            ["sudo", "-E", "/home/user/trace/api/env/bin/python", "settrace.py"]
         )
         print("[SSS]", flush=True)
 

@@ -4,3 +4,4 @@ env/
 criu_dumps/
 shared/*
 !shared/.empty
+criu-python-api/
