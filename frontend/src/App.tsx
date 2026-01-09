@@ -97,6 +97,12 @@ function buildCurrentScope(timeline: any[], timelineIndex: number | null) {
   return scope;
 }
 
+type TerminalEntry = {
+  stream: 'stdout' | 'stderr';
+  text: string;
+  flushed: boolean;
+};
+
 export default function App() {
   const inputMethod = ['touch', 'mouse'][0];
 
@@ -109,6 +115,8 @@ export default function App() {
   const [waitingForResponse, setWaitingForResponse] = useState(false);
 
   const timelineRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([]);
 
   const debuggerState = useMemo(
     () => buildCurrentScope(timelineEntries, timelineIndex),
@@ -183,23 +191,58 @@ export default function App() {
       case 'event':
         handleEvent(message.data);
         break;
+
       case 'sync':
         handleSync(message.data);
         break;
+
       case 'stdout':
-      case 'stderr':
-        if (message.data.trim()) console[message.type === 'stderr' ? 'error' : 'debug'](message.data);
+      case 'stderr': {
+        const chunk = message.data;
+        if (!chunk) return;
+
+        setTerminalEntries(prev => {
+          const last = prev[prev.length - 1];
+
+          // If last entry is same stream and not flushed → append
+          if (last && last.stream === message.type && !last.flushed) {
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...last,
+                text: last.text + chunk,
+              },
+            ];
+          }
+
+          // Otherwise start a new pending entry
+          return [
+            ...prev,
+            {
+              stream: message.type,
+              text: chunk,
+              flushed: false,
+            },
+          ];
+        });
+
         break;
-      case 'flush':
-        switch (message.data) {
-          case 'stdout':
-          case 'stderr':
-            // ...
-            break;
-          default:
-            console.warn('WS: Unknown flush data:', message.data);
-        }
+      }
+
+      case 'flush': {
+        const stream = message.data;
+        if (stream !== 'stdout' && stream !== 'stderr') return;
+
+        setTerminalEntries(prev =>
+          prev.map(entry =>
+            entry.stream === stream
+              ? { ...entry, flushed: true }
+              : entry
+          )
+        );
         break;
+      }
+
       default:
         console.warn('WS: Unknown message.type:', message.type);
     }
@@ -262,6 +305,7 @@ export default function App() {
               timeline={timelineEntries}
               nodeIndex={nodeIndex}
               timelineIndex={timelineIndex}
+              terminal={terminalEntries}
             />
           </div>
 
