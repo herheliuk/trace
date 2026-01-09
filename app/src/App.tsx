@@ -14,7 +14,7 @@ import { NodeContext } from './NodeContext';
 import { Background } from './ui/Background';
 import { useWebSocket } from './useWebSocket';
 import { server_uri } from './config';
-import { JsonInspectorPanel } from './JsonInspectorPanel';
+import { JsonInspectorPanel, TerminalEntry } from './JsonInspectorPanel';
 import { DebuggerStateContext } from './DebuggerStateContext';
 
 // Helper: update node code and shift below nodes
@@ -98,12 +98,6 @@ function buildCurrentScope(timeline: any[], timelineIndex: number | null) {
 
   return scope;
 }
-
-type TerminalEntry = {
-  stream: 'stdout' | 'stderr';
-  text: string;
-  flushed: boolean;
-};
 
 export default function App() {
   const inputMethod = ['touch', 'mouse'][0];
@@ -192,6 +186,22 @@ export default function App() {
   };
 
   const { send, isConnected } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
+
+  const sendStdin = useCallback(
+    (text: string) => {
+      send(JSON.stringify({ type: 'stdin', data: text }));
+
+      /*setTerminalEntries(prev => [
+        ...prev,
+        {
+          stream: 'stdin',
+          text,
+          flushed: true,
+        },
+      ]);*/
+    },
+    [send]
+  );
 
   // ================= NODE TYPES =================
   const nodeTypes = useMemo(
@@ -314,6 +324,7 @@ export default function App() {
               timelineIndex={timelineIndex}
               terminal={terminalEntries}
               clearTerminal={clearTerminal}
+              sendStdin={sendStdin}
             />
           </div>
 

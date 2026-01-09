@@ -1,11 +1,14 @@
-// JsonInspectorPanel.tsx
-
-import React, { useState, useRef, useLayoutEffect, useCallback } from 'react';
+import React, {
+    useState,
+    useRef,
+    useLayoutEffect,
+    useCallback,
+} from 'react';
 import { Rnd } from 'react-rnd';
 import { useDebuggerState } from './DebuggerStateContext';
 
 type TerminalEntry = {
-    stream: 'stdout' | 'stderr';
+    stream: 'stdout' | 'stderr' | 'stdin';
     text: string;
     flushed: boolean;
 };
@@ -17,6 +20,7 @@ interface JsonInspectorPanelProps {
     timelineIndex: number | null;
     terminal: TerminalEntry[];
     clearTerminal: () => void;
+    sendStdin: (text: string) => void;
 }
 
 export function JsonInspectorPanel({
@@ -26,6 +30,7 @@ export function JsonInspectorPanel({
     timelineIndex,
     terminal,
     clearTerminal,
+    sendStdin,
 }: JsonInspectorPanelProps) {
     const [visible, setVisible] = useState(true);
     const [activeTab, setActiveTab] =
@@ -37,33 +42,110 @@ export function JsonInspectorPanel({
         x: window.innerWidth - 460,
         y: window.innerHeight - 420,
         width: 440,
-        height: 340,
+        height: 360,
     });
 
-    useLayoutEffect(() => {
+    // ───────────────── Terminal scrolling ─────────────────
+    const terminalRef = useRef<HTMLDivElement | null>(null);
+    const wasAtBottomRef = useRef(true);
+
+    const handleScroll = useCallback(() => {
         const el = terminalRef.current;
         if (!el) return;
 
-        if (!wasAtBottomRef.current) return;
+        const threshold = 24;
+        wasAtBottomRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    }, []);
 
-        // wait for DOM + layout + wrapping
+    useLayoutEffect(() => {
+        const el = terminalRef.current;
+        if (!el || !wasAtBottomRef.current) return;
+
         requestAnimationFrame(() => {
             el.scrollTop = el.scrollHeight;
         });
     }, [terminal]);
 
-        const handleScroll = useCallback(() => {
-        const el = terminalRef.current;
+    // ───────────────── stdin input ─────────────────
+    const [input, setInput] = useState('');
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    const handleKeyDown = (
+        e: React.KeyboardEvent<HTMLTextAreaElement>
+    ) => {
+        // Let IME composition finish
+        if (e.nativeEvent.isComposing) return;
+
+        // TAB → insert literal tab
+        if (e.key === 'Tab') {
+            e.preventDefault();
+
+            const el = textareaRef.current;
+            if (!el) return;
+
+            const start = el.selectionStart;
+            const end = el.selectionEnd;
+
+            const next =
+                input.slice(0, start) + '\t' + input.slice(end);
+
+            setInput(next);
+
+            // restore caret position
+            requestAnimationFrame(() => {
+                el.selectionStart = el.selectionEnd = start + 1;
+            });
+
+            return;
+        }
+
+        // ENTER → send
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+
+            if (input.trim() !== '') {
+                sendStdin(input + '\n');
+                setInput('');
+            }
+
+            return;
+        }
+
+        // Shift+Enter → newline (default)
+    };
+
+    // Auto-grow textarea
+    useLayoutEffect(() => {
+        const el = textareaRef.current;
         if (!el) return;
 
-        const threshold = 24; // px tolerance
-        wasAtBottomRef.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-    }, []);
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    }, [input]);
 
-    const terminalRef = useRef<HTMLDivElement | null>(null);
-    const wasAtBottomRef = useRef(true);
+    // ───────────────── Render helpers ─────────────────
+    const renderTerminal = () => {
+        if (terminal.length === 0) {
+            return <div className="text-gray-500">No output yet.</div>;
+        }
 
+        return terminal.map((entry, i) => {
+            let colorClass = 'text-gray-400';
+
+            if (entry.stream === 'stderr') colorClass = 'text-red-400';
+            if (entry.stream === 'stdout') colorClass = 'text-white';
+            if (entry.stream === 'stdin') colorClass = 'text-blue-400';
+
+            return (
+                <pre key={i} className={colorClass}>
+                    {entry.text}
+                </pre>
+            );
+        });
+    };
+
+    // ───────────────── Hidden state ─────────────────
     if (!visible) {
         return (
             <button
@@ -79,7 +161,9 @@ export function JsonInspectorPanel({
         <Rnd
             size={{ width: rect.width, height: rect.height }}
             position={{ x: rect.x, y: rect.y }}
-            onDragStop={(_, d) => setRect(r => ({ ...r, x: d.x, y: d.y }))}
+            onDragStop={(_, d) =>
+                setRect(r => ({ ...r, x: d.x, y: d.y }))
+            }
             onResizeStop={(_, __, ref, ___, pos) =>
                 setRect({
                     width: ref.offsetWidth,
@@ -89,13 +173,13 @@ export function JsonInspectorPanel({
                 })
             }
             minWidth={300}
-            minHeight={200}
+            minHeight={220}
             bounds="window"
             dragHandleClassName="inspector-drag-handle"
             className="z-50"
         >
             <div className="w-full h-full bg-[#1e1f24] border border-gray-700 rounded shadow-lg flex flex-col overflow-hidden">
-                {/* ───────── Header (drag handle) ───────── */}
+                {/* ───────── Header ───────── */}
                 <div className="inspector-drag-handle cursor-move px-2 py-1 border-b border-gray-700 text-xs text-gray-300 bg-[#2a2c34]">
                     <div className="flex items-center justify-between">
                         <div className="flex space-x-2">
@@ -104,8 +188,8 @@ export function JsonInspectorPanel({
                                     key={tab}
                                     onClick={() => setActiveTab(tab as any)}
                                     className={`px-2 py-1 rounded ${activeTab === tab
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-gray-700'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-700'
                                         }`}
                                 >
                                     {tab}
@@ -133,10 +217,14 @@ export function JsonInspectorPanel({
                     <div className="flex space-x-4 mt-1">
                         <div>
                             <span className="text-gray-400">lineno:</span>{' '}
-                            <span className="text-yellow-400">{nodeIndex ?? 'null'}</span>
+                            <span className="text-yellow-400">
+                                {nodeIndex ?? 'null'}
+                            </span>
                         </div>
                         <div>
-                            <span className="text-gray-400">timeline_id:</span>{' '}
+                            <span className="text-gray-400">
+                                timeline_id:
+                            </span>{' '}
                             <span className="text-yellow-400">
                                 {timelineIndex ?? 'null'}
                             </span>
@@ -148,38 +236,44 @@ export function JsonInspectorPanel({
                 <div
                     ref={terminalRef}
                     onScroll={handleScroll}
-                    className={`flex-1 overflow-auto p-2 text-xs font-mono bg-black/60 whitespace-pre-wrap`}
+                    className="flex-1 overflow-auto p-2 text-xs font-mono bg-black/60 whitespace-pre-wrap"
                 >
-                    {activeTab === 'terminal' ? (
-                        terminal.length === 0 ? (
-                            <div className="text-gray-500">No output yet.</div>
-                        ) : (
-                            terminal.map((entry, i) => {
-                                let colorClass = 'text-gray-500';
-
-                                if (entry.flushed) {
-                                    colorClass =
-                                        entry.stream === 'stderr'
-                                            ? 'text-red-400'
-                                            : 'text-white';
-                                }
-
-                                return (
-                                    <pre
-                                        key={i}
-                                        className={colorClass}
-                                    >
-                                        {entry.text}
-                                    </pre>
-                                );
-                            })
-                        )
-                    ) : (
-                        <pre className="text-green-300">
-                            {JSON.stringify({ state, nodes, timeline }[activeTab], null, 2)}
-                        </pre>
-                    )}
+                    {activeTab === 'terminal'
+                        ? renderTerminal()
+                        : (
+                            <pre className="text-green-300">
+                                {JSON.stringify(
+                                    { state, nodes, timeline }[activeTab],
+                                    null,
+                                    2
+                                )}
+                            </pre>
+                        )}
                 </div>
+
+                {/* ───────── stdin input ───────── */}
+                {activeTab === 'terminal' && (
+                    <div className="border-t border-gray-700 p-1 bg-[#1a1b20]">
+                        <textarea
+                            ref={textareaRef}
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="stdin…"
+                            rows={1}
+
+                            /* ─── Kill browser behavior ─── */
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoCapitalize="off"
+                            spellCheck={false}
+                            inputMode="text"
+
+                            /* ─── Terminal look & feel ─── */
+                            className="w-full resize-none bg-black text-white text-xs font-mono px-2 py-1 outline-none caret-white"
+                        />
+                    </div>
+                )}
             </div>
         </Rnd>
     );

@@ -282,17 +282,30 @@ if __name__ == '__main__':
                     
                     cursor.execute(
                         """
-                        UPDATE files
-                        SET timeline_id = :id,
-                            line_number = :line_number
-                        WHERE file = :file;
-                        """,
-                        {
-                            "id": None,
-                            "line_number": None,
-                            "file": "main.py" # ! REPLACE WITH THE ACTUAL UPLOADED FILENAME
-                        }
+                        SELECT file
+                        FROM state
+                        WHERE id = 1
+                        """
                     )
+                    
+                    if row := cursor.fetchone():
+                        file, = row
+                        
+                        cursor.execute(
+                            """
+                            UPDATE files
+                            SET timeline_id = :id,
+                                line_number = :line_number
+                            WHERE file = :file;
+                            """,
+                            {
+                                "id": None,
+                                "line_number": None,
+                                "file": file
+                            }
+                        )
+                    else:
+                        raise Exception("no pointer to a file")
 
                 exit()
 
