@@ -18,6 +18,13 @@ f"z = {z}" #comm
 for i in [1, 2]:
     z += i
 
+def hey():
+    global x
+    x += 1
+    return x
+
+hey()
+
 hey = {'1': 1, 2: f'{2}'}
 
 print(z)

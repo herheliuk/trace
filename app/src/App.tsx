@@ -53,6 +53,8 @@ function parsePythonDict(str: string) {
 function applyDiff(target: Record<string, any>, diffStr: string) {
   const diff = parsePythonDict(diffStr);
 
+  // WE NEED TO ACCOUNT FOR FRAMES HERE AS WELL, BUT FOR NOW - IDC
+
   for (const key of Object.keys(diff)) {
     if (diff[key] === '<deleted>') {
       delete target[key];

@@ -176,23 +176,24 @@ def main(debug_script_path: Path):
 
         current_globals = dict(frame.f_globals)
 
-        last_functions = last_files[str_code_filepath]
-            
+        last_scope = last_files[str_code_filepath]
+        
         frame_id = id(frame)
-            
+        
         global_diff, local_diff = {}, {}
-
-        if event in ('line', 'return'):
-            old_globals, old_locals = last_functions[frame_id]
-
-            global_diff = diff_scope(old_globals, current_globals)
-            local_diff = diff_scope(old_locals, current_locals) if is_not_module else {}
+        
+        if event in ("line", "return"):
+            old_globals, old_locals = last_scope[frame_id]
+        elif (last_frame_id := id(frame.f_back)) in last_scope:
+            old_globals, old_locals = last_scope[last_frame_id]
+        else:
+            old_globals, old_locals = {}, {}
                 
-            #"global_diff": global_diff,
-            #"local_diff": local_diff,
-            
+        global_diff = diff_scope(old_globals, current_globals)
+        local_diff = diff_scope(old_locals, current_locals)
+        
         source_segment = source_code_cache[str_code_filepath].get(frame.f_lineno, {}).get('segment', '')
-            
+        
         data = {
             'event': event,
             'target': target,
@@ -210,19 +211,18 @@ def main(debug_script_path: Path):
             
         if event == 'line':
             send_data(data)
-            last_functions[frame_id] = current_globals, current_locals
+            last_scope[frame_id] = current_globals, current_locals
             return
 
         elif event == 'call':
             send_data(data)
-            if current_locals: print(pretty_scope(current_locals))
-            last_functions.setdefault(frame_id, (current_globals, current_locals))
+            #if current_locals: print(pretty_scope(current_locals))
+            last_scope.setdefault(frame_id, (current_globals, current_locals))
             return trace_function
 
         elif event == 'return':
             send_data(data)
-            # "return_value": arg
-            del last_functions[frame_id]
+            del last_scope[frame_id]
             return
 
         elif event == 'exception':
