@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 from time import sleep
 import criu_api as criu
 from os import (
@@ -39,15 +40,23 @@ def db_save(send_back) -> None:
             send_back
         )
         
-        
-        # sqlite3
-        # Programming Error
-        # Error binding parameter 10: type 'dict' is not supported
-        
-        for key, value in send_back.items():
-            if isinstance(value, (dict, tuple)):
-                send_back[key] = str(value)
+        def serialize(obj):
+            if isinstance(obj, (int, float, str, bool, type(None))):
+                return obj
+            elif isinstance(obj, (tuple, list)):
+                return [serialize(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {str(k): serialize(v) for k, v in obj.items()}
+            else:
+                return str(obj)
 
+        send_back['global_diff'] = json.dumps(serialize(send_back['global_diff']))
+        send_back['local_diff'] = json.dumps(serialize(send_back['local_diff']))
+        
+        if isinstance(return_value := serialize(send_back['return_value']), (dict, list, tuple)):
+            send_back['return_value'] = json.dumps(return_value)
+        else:
+            send_back['return_value'] = return_value
 
         cursor.execute(
             """
