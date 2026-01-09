@@ -14,6 +14,7 @@ import { NodeContext } from './NodeContext';
 import { Background } from './ui/Background';
 import { useWebSocket } from './useWebSocket';
 import { server_uri } from './config';
+import { JsonInspectorPanel } from './JsonInspectorPanel';
 
 // Helper: update node code and shift below nodes
 function updateNodeCode(nodes, nodeId, newCode) {
@@ -192,6 +193,13 @@ export default function App() {
             />
             <Controls />
           </ReactFlow>
+
+          <JsonInspectorPanel
+            nodes={nodes}
+            timeline={timelineEntries}
+            nodeIndex={nodeIndex}
+            timelineIndex={timelineIndex}
+          />
         </div>
 
         <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
