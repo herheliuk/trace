@@ -123,65 +123,6 @@ export default function App() {
     [timelineEntries, timelineIndex]
   );
 
-  // ================= NODE TYPES =================
-  const nodeTypes = useMemo(
-    () => ({
-      code: (props) => (
-        <CodeNode
-          {...props}
-          data={{
-            ...props.data,
-            onChange: (newCode: string) => {
-              setNodes((prev) => updateNodeCode(prev, props.id, newCode));
-            },
-          }}
-        />
-      ),
-    }),
-    []
-  );
-
-  // ================= SYNC FUNCTIONS =================
-  const handleSync = (data) => {
-    setNodes(data.nodes);
-    setNodeIndex(data.node_id?.toString() || null);
-    setTimelineEntries(data.timeline || []);
-    setTimelineIndex(data.timeline_id || null);
-  };
-
-  const syncFromServer = async () => {
-    const res = await fetch(`http${server_uri}/api/sync`);
-    const data = await res.json();
-    handleSync(data);
-  };
-
-  useEffect(() => {
-    syncFromServer();
-  }, []);
-
-  // ================= WEBSOCKET =================
-  const handleEvent = (data) => {
-    setTimelineEntries((prev) => {
-      const next = [...prev];
-      next[data.id] = data;
-      return next;
-    });
-
-    setNodes((prev) => {
-      const idx = prev.findIndex((n) => n.id === String(data.line_number));
-      if (idx < 0) return prev;
-      const node = prev[idx];
-      return [
-        ...prev.slice(0, idx),
-        { ...node, data: { ...node.data, framePointer: data.frame_id } },
-        ...prev.slice(idx + 1),
-      ];
-    });
-
-    setTimelineIndex(data.id ?? null);
-    setNodeIndex(data.line_number?.toString() ?? null);
-  };
-
   const messageReceived = (jsonString) => {
     if (!jsonString) return;
     setWaitingForResponse(false);
@@ -248,7 +189,67 @@ export default function App() {
     }
   };
 
-  const { send } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
+  const { send, isConnected } = useWebSocket(`ws${server_uri}/api/ws`, messageReceived);
+
+  // ================= NODE TYPES =================
+  const nodeTypes = useMemo(
+    () => ({
+      code: (props) => (
+        <CodeNode
+          {...props}
+          data={{
+            ...props.data,
+            onChange: (newCode: string) => {
+              setNodes((prev) => updateNodeCode(prev, props.id, newCode));
+            },
+          }}
+        />
+      ),
+    }),
+    []
+  );
+
+  // ================= SYNC FUNCTIONS =================
+  const handleSync = (data) => {
+    setNodes(data.nodes);
+    setNodeIndex(data.node_id?.toString() || null);
+    setTimelineEntries(data.timeline || []);
+    setTimelineIndex(data.timeline_id || null);
+  };
+
+  const syncFromServer = async () => {
+    const res = await fetch(`http${server_uri}/api/sync`);
+    const data = await res.json();
+    handleSync(data);
+  };
+
+  useEffect(() => {
+    if (isConnected)
+      syncFromServer();
+  }, [isConnected]);
+
+  // ================= WEBSOCKET =================
+  const handleEvent = (data) => {
+    setTimelineEntries((prev) => {
+      const next = [...prev];
+      next[data.id] = data;
+      return next;
+    });
+
+    setNodes((prev) => {
+      const idx = prev.findIndex((n) => n.id === String(data.line_number));
+      if (idx < 0) return prev;
+      const node = prev[idx];
+      return [
+        ...prev.slice(0, idx),
+        { ...node, data: { ...node.data, framePointer: data.frame_id } },
+        ...prev.slice(idx + 1),
+      ];
+    });
+
+    setTimelineIndex(data.id ?? null);
+    setNodeIndex(data.line_number?.toString() ?? null);
+  };
 
   // ================= REACT FLOW =================
   const onNodesChange = useCallback(
