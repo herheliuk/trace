@@ -15,6 +15,7 @@ import { Background } from './ui/Background';
 import { useWebSocket } from './useWebSocket';
 import { server_uri } from './config';
 import { JsonInspectorPanel } from './JsonInspectorPanel';
+import { DebuggerStateContext } from './DebuggerStateContext';
 
 // Helper: update node code and shift below nodes
 function updateNodeCode(nodes, nodeId, newCode) {
@@ -40,6 +41,62 @@ function updateNodeCode(nodes, nodeId, newCode) {
   });
 }
 
+function parsePythonDict(str: string) {
+  if (!str || str === '{}') return {};
+  try {
+    return JSON.parse(str.replace(/'/g, '"'));
+  } catch {
+    return {};
+  }
+}
+
+function applyDiff(target: Record<string, any>, diffStr: string) {
+  const diff = parsePythonDict(diffStr);
+
+  for (const key of Object.keys(diff)) {
+    if (diff[key] === '<deleted>') {
+      delete target[key];
+    } else {
+      target[key] = diff[key];
+    }
+  }
+}
+
+function buildCurrentScope(timeline: any[], timelineIndex: number | null) {
+  if (timelineIndex == null || timelineIndex < 0) return null;
+
+  const scope: any = {
+    event: null,
+    file: null,
+    function: null,
+    frame_id: null,
+    line_number: null,
+    globals: {},
+    locals: {},
+    return_value: null,
+    error: null,
+  };
+
+  for (let i = 0; i <= timelineIndex && i < timeline.length; i++) {
+    const e = timeline[i];
+    if (!e) continue;
+
+    scope.event = e.event;
+    scope.file = e.file;
+    scope.function = e.function;
+    scope.frame_id = e.frame_id;
+    scope.line_number = e.line_number;
+
+    applyDiff(scope.globals, e.global_diff);
+    applyDiff(scope.locals, e.local_diff);
+
+    if (e.return_value != null) scope.return_value = e.return_value;
+    if (e.error != null) scope.error = e.error;
+  }
+
+  return scope;
+}
+
 export default function App() {
   const inputMethod = ['touch', 'mouse'][0];
 
@@ -52,6 +109,11 @@ export default function App() {
   const [waitingForResponse, setWaitingForResponse] = useState(false);
 
   const timelineRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const debuggerState = useMemo(
+    () => buildCurrentScope(timelineEntries, timelineIndex),
+    [timelineEntries, timelineIndex]
+  );
 
   // ================= NODE TYPES =================
   const nodeTypes = useMemo(
@@ -169,62 +231,64 @@ export default function App() {
     <div className="w-screen h-screen flex flex-col relative overflow-hidden">
       <Background />
 
-      <NodeContext.Provider value={{ nodeIndex, setNodeIndex }}>
-        <div className="flex-1 relative z-20 w-full">
-          <ReactFlow
-            nodes={nodes}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            fitView
-            panOnScroll={inputMethod === 'touch'}
-            zoomOnScroll={inputMethod === 'mouse'}
-            proOptions={{ hideAttribution: true }}
-            minZoom={0.01}
-            maxZoom={1000}
-            panOnScrollSpeed={1}
-            className="w-full h-full bg-transparent"
-          >
-            <ImportPanel setFileImported={setFileImported} />
-            <WebSocketPanel
-              send={send}
-              show={fileImported}
-              waiting={waitingForResponse}
-              setWaiting={setWaitingForResponse}
+      <DebuggerStateContext.Provider value={debuggerState}>
+        <NodeContext.Provider value={{ nodeIndex, setNodeIndex }}>
+          <div className="flex-1 relative z-20 w-full">
+            <ReactFlow
+              nodes={nodes}
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange}
+              fitView
+              panOnScroll={inputMethod === 'touch'}
+              zoomOnScroll={inputMethod === 'mouse'}
+              proOptions={{ hideAttribution: true }}
+              minZoom={0.01}
+              maxZoom={1000}
+              panOnScrollSpeed={1}
+              className="w-full h-full bg-transparent"
+            >
+              <ImportPanel setFileImported={setFileImported} />
+              <WebSocketPanel
+                send={send}
+                show={fileImported}
+                waiting={waitingForResponse}
+                setWaiting={setWaitingForResponse}
+              />
+              <Controls />
+            </ReactFlow>
+
+            <JsonInspectorPanel
+              nodes={nodes}
+              timeline={timelineEntries}
+              nodeIndex={nodeIndex}
+              timelineIndex={timelineIndex}
             />
-            <Controls />
-          </ReactFlow>
+          </div>
 
-          <JsonInspectorPanel
-            nodes={nodes}
-            timeline={timelineEntries}
-            nodeIndex={nodeIndex}
-            timelineIndex={timelineIndex}
-          />
-        </div>
+          <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
+            {timelineEntries.map((record, idx) => {
+              const isSelected = timelineIndex === idx;
+              const label = record?.event?.includes('line')
+                ? record.line_number
+                : record?.event?.replace(/^"+|"+$/g, '')?.charAt(0)?.toUpperCase();
 
-        <div className="w-full h-16 flex items-center px-4 overflow-x-auto z-20 bg-[#292C33]">
-          {timelineEntries.map((record, idx) => {
-            const isSelected = timelineIndex === idx;
-            const label = record?.event?.includes('line')
-              ? record.line_number
-              : record?.event?.replace(/^"+|"+$/g, '')?.charAt(0)?.toUpperCase();
-
-            return (
-              <div
-                key={idx}
-                ref={(el) => (timelineRefs.current[idx] = el)}
-                onClick={() => handleTimelineClick(idx)}
-                className={`flex flex-col items-center flex-none w-8 mx-1 cursor-pointer transition-all duration-300
+              return (
+                <div
+                  key={idx}
+                  ref={(el) => (timelineRefs.current[idx] = el)}
+                  onClick={() => handleTimelineClick(idx)}
+                  className={`flex flex-col items-center flex-none w-8 mx-1 cursor-pointer transition-all duration-300
                   ${isSelected ? 'bg-yellow-400 border-yellow-600' : 'bg-gray-400/50 border-gray-600'}
                   rounded-full border-2 h-8`}
-                title={`Timeline index: ${idx}, Line: ${record.line_number}`}
-              >
-                <span className="text-xs text-white mt-1 font-bold">{label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </NodeContext.Provider>
+                  title={`Timeline index: ${idx}, Line: ${record.line_number}`}
+                >
+                  <span className="text-xs text-white mt-1 font-bold">{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </NodeContext.Provider>
+      </DebuggerStateContext.Provider>
     </div>
   );
 }
