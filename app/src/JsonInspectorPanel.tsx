@@ -27,7 +27,7 @@ export function JsonInspectorPanel({
     terminal,
     clearTerminal,
 }: JsonInspectorPanelProps) {
-    const [visible, setVisible] = useState(false);
+    const [visible, setVisible] = useState(true);
     const [activeTab, setActiveTab] =
         useState<'state' | 'timeline' | 'nodes' | 'terminal'>('state');
 

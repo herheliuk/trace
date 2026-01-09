@@ -215,7 +215,7 @@ def main(debug_script_path: Path):
 
         elif event == 'call':
             send_data(data)
-            #if current_locals: print_step(pretty_scope(current_locals))
+            if current_locals: print(pretty_scope(current_locals))
             last_functions.setdefault(frame_id, (current_globals, current_locals))
             return trace_function
 

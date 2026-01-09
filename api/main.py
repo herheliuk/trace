@@ -81,6 +81,9 @@ app = FastAPI(
     openapi_url=None
 )
 
+watcher_process = None
+needs_to_sync = False
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -172,10 +175,8 @@ async def app_sync() -> dict:
             "timeline_id": timeline_id
         }
 
-watcher_process = None
-
 def ensure_watcher_running():
-    global watcher_process
+    global watcher_process, needs_to_sync
     
     restart_needed = watcher_process is None or watcher_process.poll() is not None
 
@@ -223,6 +224,9 @@ def ensure_watcher_running():
         watcher_process = subprocess.Popen(
             ["sudo", "-E", "/home/user/trace/api/env/bin/python", "settrace.py"]
         )
+        
+        needs_to_sync = True
+        
         print("[SSS]", flush=True)
 
 MAIN_FILE_PATH = Path.cwd() / "shared" / "main.py"
@@ -289,8 +293,6 @@ def nodes_from_file(raw_bytes = None, timeline_id = None) -> str:
         }
         for idx, (lineno, source_segment) in enumerate(lines_with_numbers)
     ]
-    
-needs_to_sync = False
 
 @app.post("/api/upload")
 async def import_graph(file: UploadFile = File(...)):
