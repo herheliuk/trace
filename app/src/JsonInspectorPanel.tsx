@@ -259,7 +259,7 @@ export function JsonInspectorPanel({
                             value={input}
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="stdin…"
+                            placeholder="jump to ..."
                             rows={1}
 
                             /* ─── Kill browser behavior ─── */

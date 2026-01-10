@@ -111,7 +111,7 @@ class StdErrRedirector:
 sys.stdout = StdOutRedirector()
 sys.stderr = StdErrRedirector()
 
-def send_data(send_back, frame):
+def send_data(send_back, f):
     criu.dump(allow_overwrite=True)
     
     send_back['id'] = criu._last_dump_number
@@ -136,14 +136,14 @@ def send_data(send_back, frame):
                         _exit(0)
                     except Exception as error:
                         print(error)
-                case 'update_node_code':
-                    ifc.append(_app_to_server, serialize(frame))
-                case "stdin":
-                    # TODO
+                case 'update_node_code': # TODO
                     ifc.append(_app_to_server, {
                         "type": "stderr",
-                        "data": f"!{message['data']}"
+                        "data": f"TODO: EDIT NODE {message['lineno']} TO {repr(message['code_segment'])}\n"
                     })
+                case "stdin": # TODO, CURRENTLY USED FOR DEBUG ^
+                    clean_input = int(message['data'])
+                    exec(f'try:\n    f.f_lineno = {clean_input}\nexcept Exception as e:\n    print(e)')
             
         sleep(.1)
     
