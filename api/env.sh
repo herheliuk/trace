@@ -30,6 +30,6 @@ fi
 if [[ -f "$TARGET_DIR/requirements.txt" ]]; then
     echo "Installing requirements from $TARGET_DIR/requirements.txt ..."
     # no internet halts next 2 lines
-    pip install --upgrade pip
-    pip install --upgrade -r "$TARGET_DIR/requirements.txt"
+    pip install --upgrade pip &>/dev/null
+    pip install --upgrade -r "$TARGET_DIR/requirements.txt" &>/dev/null
 fi
