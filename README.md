@@ -29,7 +29,8 @@ With this information, since we can **jump through the frame** with `frame.f_lin
 
 ## Potential Obstacles
 
-- Some states might be irreversible.  
+- Non-standardisable objects.
+- Some states might be irreversible.
 - We may need additional information, such as the **function body gathered with the `inspect` module**, to restore the remaining of the function.  
 - The AST can also help determine other things, such as `nonlocal` and `global` variables.  
 
