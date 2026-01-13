@@ -1,6 +1,4 @@
-```
-SEE PROOF_OF_CONCEPT/ ! ^-^
-```
+## TODO: merge with https://github.com/herheliuk/pure-python-checkpoint-restore
 
 ---
 
